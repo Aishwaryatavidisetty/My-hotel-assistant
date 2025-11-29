@@ -113,8 +113,8 @@ def _configure_gemini():
 def llm_extract_booking_fields(message: str, state: BookingState) -> Dict[str, Any]:
     _configure_gemini()
     
-    # --- CHANGED: Switched to gemini-pro to fix 404 error ---
-    model = genai.GenerativeModel('gemini-pro')
+    # --- CHANGED: Use gemini-1.5-flash with updated requirements.txt ---
+    model = genai.GenerativeModel('gemini-1.5-flash')
 
     missing = get_missing_fields(state)
     expected_field = missing[0] if missing else "none"
