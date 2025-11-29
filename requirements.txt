@@ -10,7 +10,7 @@
 #supabase
 
 streamlit
-openai
+google-generativeai
 supabase
 faiss-cpu
 pypdf
