@@ -131,13 +131,12 @@ def llm_extract_booking_fields(message: str, state: BookingState) -> Dict[str, A
 
     prompt = f"{system_prompt}\n\nUser Message: {message}"
 
-    # --- ROBUST MODEL FALLBACK ---
+    # --- UPDATED MODEL LIST BASED ON YOUR ERROR LOG ---
     models_to_try = [
-        'gemini-1.5-flash', 
-        'gemini-1.5-flash-001',
-        'gemini-1.5-pro',
-        'gemini-1.0-pro', 
-        'gemini-pro'
+        'gemini-2.0-flash', 
+        'gemini-2.0-flash-lite',
+        'gemini-flash-latest',
+        'gemini-pro-latest'
     ]
     
     content = ""

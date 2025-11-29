@@ -191,14 +191,12 @@ def rag_tool(store: RAGStore, question: str) -> str:
     
     user_prompt = f"{system_prompt}\n\nContext:\n{context_text}\n\nQuestion: {question}"
     
-    # --- MODEL FALLBACK WITH DEBUGGING ---
-    # We added 'gemini-1.0-pro' which is often the fallback for older keys
+    # --- UPDATED MODEL LIST BASED ON YOUR ERROR LOG ---
     models_to_try = [
-        'gemini-1.5-flash', 
-        'gemini-1.5-flash-001',
-        'gemini-1.5-pro',
-        'gemini-1.0-pro', 
-        'gemini-pro'
+        'gemini-2.0-flash', 
+        'gemini-2.0-flash-lite',
+        'gemini-flash-latest',
+        'gemini-pro-latest'
     ]
     
     last_error = None
