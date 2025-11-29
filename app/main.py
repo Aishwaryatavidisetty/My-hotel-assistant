@@ -166,11 +166,11 @@ def main():
 
 def run_chat_assistant(cfg):
     # Standard Header
-    st.title("🏨 Grand Hotel AI Concierge")
+    st.title("🏨 AI Hotel Booking Assistant")
     st.caption("Your personal assistant for bookings and hotel services.")
 
     # File Uploader in Expander (Cleaner UI)
-    with st.expander("📂 Admin: Upload Hotel Documents"):
+    with st.expander("📂 Upload Hotel Documents"):
         uploaded_files = st.file_uploader(
             "Upload policies (PDF)",
             type=["pdf"],
