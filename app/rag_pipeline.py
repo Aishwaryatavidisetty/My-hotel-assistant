@@ -184,9 +184,6 @@ def rag_tool(store: RAGStore, question: str) -> str:
     
     context_text = "\n\n---\n\n".join([doc["content"] for doc in results])
     
-    # --- CHANGED: Use gemini-1.5-flash. Requires google-generativeai>=0.7.0 ---
-    model = genai.GenerativeModel('gemini-1.5-flash-latest')
-    
     system_prompt = (
         "You are a helpful hotel booking assistant. "
         "Use the provided context to answer the user's question accurately. "
@@ -195,8 +192,18 @@ def rag_tool(store: RAGStore, question: str) -> str:
     
     user_prompt = f"{system_prompt}\n\nContext:\n{context_text}\n\nQuestion: {question}"
     
-    try:
-        response = model.generate_content(user_prompt)
-        return response.text
-    except Exception as e:
-        return f"Error generating answer: {str(e)}"
+    # --- ROBUST MODEL FALLBACK ---
+    # We try preferred models in order. If one fails (404), we try the next.
+    models_to_try = ['gemini-1.5-flash', 'gemini-1.5-flash-001', 'gemini-pro']
+    
+    last_error = None
+    for model_name in models_to_try:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(user_prompt)
+            return response.text
+        except Exception as e:
+            last_error = e
+            continue
+            
+    return f"Error generating answer after trying models {models_to_try}: {str(last_error)}"
