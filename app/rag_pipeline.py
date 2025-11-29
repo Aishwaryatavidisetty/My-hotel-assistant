@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import List, Dict, Any
 from dataclasses import dataclass
 from io import BytesIO
+import time  # --- Added to handle rate limiting
 
 import numpy as np
 import faiss
@@ -146,7 +147,9 @@ def build_rag_store_from_uploads(uploaded_files, cfg: RAGConfig | None = None):
 
     # Embed all chunks
     embeddings = []
-    batch_size = 20  # Gemini batch size limit is smaller than OpenAI's sometimes
+    # --- RATE LIMIT FIX ---
+    # Reduced batch size and added sleep to avoid 429 Errors
+    batch_size = 10  
 
     for i in range(0, len(texts), batch_size):
         batch = texts[i:i + batch_size]
@@ -160,8 +163,14 @@ def build_rag_store_from_uploads(uploaded_files, cfg: RAGConfig | None = None):
             # result['embedding'] is a list of embeddings
             emb = result['embedding']
             embeddings.extend(emb)
+            
+            # --- CRITICAL: Sleep to respect free tier rate limits ---
+            time.sleep(2.0) 
+            
         except Exception as e:
             st.error(f"Error embedding batch: {e}")
+            # If we hit a rate limit, try waiting longer before skipping
+            time.sleep(5.0)
             continue
 
     if not embeddings:
