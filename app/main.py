@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sys
 import os
+import io
+from gtts import gTTS  # Text to Speech
 
 # --- Add project root to sys.path ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -10,13 +12,14 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 import streamlit as st
+import google.generativeai as genai
 
 # IMPORTS
 from config import load_config
 from chat_logic import detect_intent, store_message
 from rag_pipeline import RAGStore, RAGConfig, build_rag_store_from_uploads
 from rag_pipeline import rag_tool 
-from tools import booking_persistence_tool, email_tool
+from tools import booking_persistence_tool, email_tool, find_booking_by_email # Added find_booking
 from admin_dashboard import render_admin_dashboard
 
 from booking_flow import (
@@ -27,6 +30,9 @@ from booking_flow import (
     next_question_for_missing_field,
 )
 
+# --- CONSTANTS FOR UX ---
+USER_AVATAR = "👤"
+BOT_AVATAR = "🏨"
 
 def _init_app_state():
     if "messages" not in st.session_state:
@@ -37,6 +43,49 @@ def _init_app_state():
         st.session_state.rag_store = None
     if "rag_chunks" not in st.session_state:
         st.session_state.rag_chunks = []
+
+# --- HELPER: AUDIO TRANSCRIPTION (STT) ---
+def transcribe_audio(audio_file):
+    try:
+        # We can use Gemini to listen to the audio!
+        # Or simpler: if you have an STT library. 
+        # Using Gemini 1.5 Flash which supports audio input is very clean.
+        
+        # Configure genai (ensure key is loaded)
+        if "google" in st.secrets:
+            api_key = st.secrets["google"]["api_key"]
+        elif "gemini" in st.secrets:
+            api_key = st.secrets["gemini"]["api_key"]
+        else:
+            api_key = st.secrets.get("google_api_key", "")
+        genai.configure(api_key=api_key)
+        
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        
+        # Read file bytes
+        audio_bytes = audio_file.read()
+        
+        # Gemini expects parts. We can send data directly.
+        response = model.generate_content([
+            "Transcribe this audio exactly as it is spoken.",
+            {"mime_type": "audio/wav", "data": audio_bytes}
+        ])
+        return response.text.strip()
+    except Exception as e:
+        st.error(f"Audio transcription failed: {e}")
+        return None
+
+# --- HELPER: TEXT TO SPEECH (TTS) ---
+def text_to_speech(text):
+    try:
+        if not text: return
+        tts = gTTS(text=text, lang='en')
+        # Save to memory buffer
+        audio_buffer = io.BytesIO()
+        tts.write_to_fp(audio_buffer)
+        st.audio(audio_buffer, format="audio/mp3", start_time=0)
+    except Exception as e:
+        print(f"TTS Error: {e}")
 
 
 def main():
@@ -50,14 +99,17 @@ def main():
     _init_app_state()
 
     menu = st.sidebar.radio("Navigation", ["Chat Assistant", "Admin Dashboard"])
+    
+    # Optional Voice Mode Toggle
+    enable_voice = st.sidebar.checkbox("Enable Voice Mode (TTS)", value=False)
 
     if menu == "Chat Assistant":
-        run_chat_assistant(cfg)
+        run_chat_assistant(cfg, enable_voice)
     else:
         render_admin_dashboard()
 
 
-def run_chat_assistant(cfg):
+def run_chat_assistant(cfg, enable_voice):
     st.title("🏨 AI Hotel Booking Assistant")
 
     st.subheader("Upload Hotel PDFs for RAG")
@@ -79,18 +131,35 @@ def run_chat_assistant(cfg):
                 f"Indexed {len(chunks)} chunks from {len(uploaded_files)} file(s)."
             )
 
-    # Display chat history
+    # --- Display chat history with AVATARS ---
     for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
+        avatar = USER_AVATAR if msg["role"] == "user" else BOT_AVATAR
+        with st.chat_message(msg["role"], avatar=avatar):
             st.write(msg["content"])
 
-    user_input = st.chat_input("How can I help you with your hotel stay today?")
+    # --- INPUT: TEXT OR AUDIO ---
+    user_input = None
+    
+    # 1. Audio Input (New Streamlit feature)
+    audio_val = st.audio_input("🎤 Speak to the assistant")
+    
+    # 2. Text Input
+    text_val = st.chat_input("How can I help you with your hotel stay today?")
+
+    if audio_val:
+        with st.spinner("Transcribing voice..."):
+            transcribed_text = transcribe_audio(audio_val)
+            if transcribed_text:
+                user_input = transcribed_text
+
+    if text_val:
+        user_input = text_val
+
     if not user_input:
         return
 
     # --- UI FIX: Display User Message Immediately ---
-    # This fixes the "late" appearance of the user prompt
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar=USER_AVATAR):
         st.write(user_input)
     
     store_message(st.session_state.messages, "user", user_input)
@@ -100,7 +169,6 @@ def run_chat_assistant(cfg):
     detected_intent = detect_intent(user_input)
     final_intent = detected_intent
     
-    # Keyword list to force RAG if the intent detector misses it
     rag_keywords = [
         "price", "cost", "how much", "rate", 
         "wifi", "internet", "pool", "gym", "spa", "parking",
@@ -108,63 +176,79 @@ def run_chat_assistant(cfg):
         "breakfast", "food", "restaurant", "location", "near"
     ]
     
-    # 1. Global RAG Override (Highest Priority)
-    # If the user asks about price/amenities, ALWAYS answer it, 
-    # regardless of whether a booking is active or what the intent detector says.
+    # Check for Booking Status keywords
+    check_booking_keywords = ["check booking", "status", "my booking", "booking details"]
+    if any(kw in user_input.lower() for kw in check_booking_keywords):
+        final_intent = "check_booking"
+
+    # Priority Routing
     if any(kw in user_input.lower() for kw in rag_keywords):
         final_intent = "faq_rag"
-
-    # 2. Active Booking Logic
     elif st.session_state.booking_state.active:
         if "cancel" in user_input.lower():
             final_intent = "booking"
         elif detected_intent == "faq_rag": 
-             # Trust detector if it found RAG intent even without keywords
              final_intent = "faq_rag"
         else:
-            # Otherwise, assume the user is answering the booking question
             final_intent = "booking"
 
-    # Dispatch
-    if final_intent == "booking":
-        handle_booking_intent(cfg, user_input)
-    elif final_intent == "faq_rag":
-        handle_faq_intent(user_input)
-    elif final_intent == "small_talk":
-        respond("Hello! I can help you book rooms or answer questions about the hotel.")
+    # Dispatch with Thinking State
+    with st.spinner("Thinking..."):
+        if final_intent == "booking":
+            response_text = handle_booking_intent(cfg, user_input)
+        elif final_intent == "check_booking":
+            response_text = handle_check_booking(user_input)
+        elif final_intent == "faq_rag":
+            response_text = handle_faq_intent(user_input)
+        elif final_intent == "small_talk":
+            response_text = "Hello! I can help you book rooms, check your booking status, or answer questions about the hotel."
+        else:
+            response_text = "I’m not sure I understood. Are you trying to make a booking, check a booking, or ask about hotel details?"
+
+        # Display Response
+        respond(response_text, enable_voice)
+
+
+def handle_check_booking(user_input: str) -> str:
+    # Simple extraction of email-like patterns
+    import re
+    email_match = re.search(r'[\w\.-]+@[\w\.-]+', user_input)
+    
+    if email_match:
+        email = email_match.group(0)
+        results = find_booking_by_email(email)
+        if not results:
+            return f"I couldn't find any active bookings for {email}."
+        
+        msg = f"Found {len(results)} booking(s) for {email}:\n"
+        for b in results:
+            msg += f"\n- **ID:** {b['booking_id']}\n  **Type:** {b['type']}\n  **Date:** {b['date']} at {b['time']}\n  **Status:** {b['status']}\n"
+        return msg
     else:
-        respond(
-            "I’m not sure I understood. "
-            "Are you trying to make a hotel booking or asking about hotel details?"
-        )
+        return "Please provide your email address to check your booking."
 
 
-def handle_booking_intent(cfg, user_message: str):
+def handle_booking_intent(cfg, user_message: str) -> str:
     state: BookingState = st.session_state.booking_state
     
-    # Activate booking mode if not already active
     if not state.active:
         state.active = True
         st.session_state.booking_state = state
 
     lower_msg = user_message.strip().lower()
 
-    # --- Cancellation Check ---
     if "cancel" in lower_msg:
-        respond("Booking cancelled. Let me know if you'd like to start again.")
-        st.session_state.booking_state = BookingState() # Reset and deactivate
-        return
+        st.session_state.booking_state = BookingState()
+        return "Booking cancelled. Let me know if you'd like to start again."
 
-    # --- Confirmation Phase ---
     if state.awaiting_confirmation:
         if "confirm" in lower_msg or lower_msg in ("yes", "yes, confirm"):
             payload = state.to_payload()
             result = booking_persistence_tool(cfg, payload)
 
             if not result["success"]:
-                respond(f"Error saving booking: {result['error']}")
                 st.session_state.booking_state = BookingState()
-                return
+                return f"Error saving booking: {result['error']}"
 
             booking_id = result["booking_id"]
             email_body = (
@@ -179,72 +263,57 @@ def handle_booking_intent(cfg, user_message: str):
                 subject="Hotel Booking Confirmation",
                 body=email_body,
             )
-
+            
+            msg = f"🎉 Booking confirmed! ID: {booking_id}. "
             if not email_result["success"]:
-                respond(
-                    f"Booking confirmed (ID {booking_id}) but email failed: {email_result['error']}"
-                )
+                msg += f" (Email failed: {email_result['error']})"
             else:
-                respond(
-                    f"🎉 Booking confirmed! ID: {booking_id}. "
-                    "A confirmation email has been sent."
-                )
+                msg += " A confirmation email has been sent."
 
             st.session_state.booking_state = BookingState()
-            return
+            return msg
 
-        respond("Type 'confirm' to finalize or 'cancel' to stop.")
-        return
+        return "Type 'confirm' to finalize or 'cancel' to stop."
 
-    # --- Data Collection Phase ---
-    # Update state with new info
     state = update_state_from_message(user_message, state)
     st.session_state.booking_state = state
 
-    # Check for validation errors
     if state.errors:
         field, msg = next(iter(state.errors.items()))
-        respond(msg)
-        return
+        return msg
 
-    # Check what is still missing
     missing = get_missing_fields(state)
 
     if missing:
         next_field = missing[0]
-        respond(next_question_for_missing_field(next_field))
-        return
+        return next_question_for_missing_field(next_field)
 
-    # If nothing missing, ask for confirmation
     summary = generate_confirmation_text(state)
     state.awaiting_confirmation = True
     st.session_state.booking_state = state
 
-    respond(
+    return (
         "Here are your booking details:\n\n"
         f"{summary}\n"
         "Type **'confirm'** to finalize or **'cancel'**."
     )
 
 
-def handle_faq_intent(user_message: str):
+def handle_faq_intent(user_message: str) -> str:
     store: RAGStore = st.session_state.rag_store
 
     if store is None or store.size == 0:
-        respond(
-            "No hotel documents indexed yet. Upload PDFs and click "
-            "'Build Knowledge Base', then ask your question again."
-        )
+        return "No hotel documents indexed yet. Upload PDFs and click 'Build Knowledge Base', then ask your question again."
     else:
-        # Note: We do NOT deactivate booking state here. 
-        # This allows the user to ask a question and then resume booking.
-        respond(rag_tool(store, user_message))
+        return rag_tool(store, user_message)
 
 
-def respond(text: str):
+def respond(text: str, enable_voice: bool = False):
     store_message(st.session_state.messages, "assistant", text)
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar=BOT_AVATAR):
         st.write(text)
+        if enable_voice:
+            text_to_speech(text)
 
 
 if __name__ == "__main__":

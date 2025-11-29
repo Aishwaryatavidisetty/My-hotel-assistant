@@ -19,3 +19,5 @@ numpy
 python-dotenv
 email-validator
 sentence-transformers
+gTTS
+pandas
