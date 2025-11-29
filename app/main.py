@@ -151,20 +151,26 @@ def run_chat_assistant(cfg, voice_mode):
                 f"Indexed {len(chunks)} chunks from {len(uploaded_files)} file(s)."
             )
 
-    # --- Display chat history with AVATARS ---
-    for msg in st.session_state.messages:
-        avatar = USER_AVATAR if msg["role"] == "user" else BOT_AVATAR
-        with st.chat_message(msg["role"], avatar=avatar):
-            st.write(msg["content"])
+    # --- CHAT INTERFACE LAYOUT ---
+    # We use a fixed-height container for messages so the inputs stay at the bottom.
+    # Adjust height (e.g., 500px) as needed to fit your screen.
+    chat_container = st.container(height=500)
 
-    # --- INPUT: TEXT OR AUDIO ---
+    # Display chat history INSIDE the container
+    with chat_container:
+        for msg in st.session_state.messages:
+            avatar = USER_AVATAR if msg["role"] == "user" else BOT_AVATAR
+            with st.chat_message(msg["role"], avatar=avatar):
+                st.write(msg["content"])
+
+    # --- INPUT AREA (Pinned near bottom) ---
     user_input = None
     input_source = "text" # Default
     
-    # 1. Audio Input (New Streamlit feature)
+    # 1. Audio Input: This will now sit right below the chat container
     audio_val = st.audio_input("🎤 Speak to the assistant")
     
-    # 2. Text Input
+    # 2. Text Input: This automatically pins to the very bottom
     text_val = st.chat_input("How can I help you with your hotel stay today?")
 
     if audio_val:
@@ -193,8 +199,10 @@ def run_chat_assistant(cfg, voice_mode):
     # If "Always Off", should_speak remains False
 
     # --- UI FIX: Display User Message Immediately ---
-    with st.chat_message("user", avatar=USER_AVATAR):
-        st.write(user_input)
+    # We write this into the container so it appears in history instantly
+    with chat_container:
+        with st.chat_message("user", avatar=USER_AVATAR):
+            st.write(user_input)
     
     store_message(st.session_state.messages, "user", user_input)
 
@@ -240,7 +248,14 @@ def run_chat_assistant(cfg, voice_mode):
             response_text = "I’m not sure I understood. Are you trying to make a booking, check a booking, or ask about hotel details?"
 
         # Display Response with Voice Preference
-        respond(response_text, should_speak)
+        # We need to manually write the response to the container because 'respond()'
+        # blindly writes to st (which might be outside the container context).
+        store_message(st.session_state.messages, "assistant", response_text)
+        with chat_container:
+            with st.chat_message("assistant", avatar=BOT_AVATAR):
+                st.write(response_text)
+                if should_speak:
+                    text_to_speech(response_text)
 
 
 def handle_check_booking(user_input: str) -> str:
@@ -342,6 +357,9 @@ def handle_faq_intent(user_message: str) -> str:
         return rag_tool(store, user_message)
 
 
+# Modified respond function is now handled inline within run_chat_assistant
+# to ensure it prints inside the chat_container.
+# We keep this for non-chat usage if any.
 def respond(text: str, enable_voice: bool = False):
     store_message(st.session_state.messages, "assistant", text)
     with st.chat_message("assistant", avatar=BOT_AVATAR):
