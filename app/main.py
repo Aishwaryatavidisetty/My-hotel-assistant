@@ -48,32 +48,73 @@ def _init_app_state():
 def inject_custom_css():
     st.markdown("""
     <style>
-        /* Chat Container Padding */
-        .stChatInput {
-            padding-bottom: 1rem;
+        /* --- Global Settings --- */
+        .stApp {
+            background-color: #f8f9fa;
         }
         
-        /* Style the User Message (Blueish) */
-        div[data-testid="stChatMessage"]:nth-child(odd) {
-            background-color: #f0f2f6; 
-            border: 1px solid #e0e0e0;
-            border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 10px;
+        /* --- Chat Container Styling --- */
+        [data-testid="stVerticalBlock"] > [style*="flex-direction: column;"] > [data-testid="stVerticalBlock"] {
+            gap: 0.5rem;
         }
 
-        /* Style the Assistant Message (White/Clean) */
-        div[data-testid="stChatMessage"]:nth-child(even) {
-            background-color: #ffffff;
-            border: 1px solid #e0e0e0;
-            border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 10px;
+        /* --- User Message Bubble (Right-ish / Distinct Color) --- */
+        div[data-testid="stChatMessage"]:nth-child(odd) {
+            background: linear-gradient(135deg, #0062cc 0%, #004a99 100%);
+            color: white;
+            border-radius: 16px 16px 0px 16px;
+            padding: 1rem;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            border: none;
         }
         
-        /* Compact Audio Input */
+        /* Fix text color inside user bubble */
+        div[data-testid="stChatMessage"]:nth-child(odd) p {
+            color: white !important;
+        }
+        
+        /* Fix Avatar Background for User */
+        div[data-testid="stChatMessage"]:nth-child(odd) [data-testid="stChatMessageAvatarBackground"] {
+            background-color: #004a99;
+        }
+
+        /* --- Assistant Message Bubble (Left / Clean White) --- */
+        div[data-testid="stChatMessage"]:nth-child(even) {
+            background-color: #ffffff;
+            border-radius: 16px 16px 16px 0px;
+            padding: 1rem;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            border: 1px solid #eef0f3;
+        }
+
+        /* --- Audio Input Styling --- */
         .stAudioInput {
-            margin-top: -15px;
+            position: fixed;
+            bottom: 80px; /* Sits right above the chat input */
+            z-index: 1000;
+            width: 100%;
+            background: transparent;
+        }
+        
+        /* Make the audio widget compact */
+        .stAudioInput > div {
+            background-color: transparent !important;
+            border: none !important;
+        }
+
+        /* --- Header Styling --- */
+        h1 {
+            color: #1e3a8a;
+            font-family: 'Helvetica Neue', sans-serif;
+            font-weight: 700;
+        }
+        
+        /* --- Sidebar Styling --- */
+        section[data-testid="stSidebar"] {
+            background-color: #ffffff;
+            border-right: 1px solid #e5e7eb;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -93,7 +134,7 @@ def transcribe_audio(audio_file):
         # Read file bytes
         audio_bytes = audio_file.read()
 
-        # --- UPDATED FALLBACK STRATEGY FOR AUDIO ---
+        # Fallback Strategy
         models_to_try = [
             'gemini-2.0-flash', 
             'gemini-2.0-flash-lite',
@@ -105,7 +146,6 @@ def transcribe_audio(audio_file):
         for model_name in models_to_try:
             try:
                 model = genai.GenerativeModel(model_name)
-                # Gemini expects parts. We can send data directly.
                 response = model.generate_content([
                     "Transcribe this audio exactly as it is spoken.",
                     {"mime_type": "audio/wav", "data": audio_bytes}
@@ -115,7 +155,6 @@ def transcribe_audio(audio_file):
                 last_error = e
                 continue
         
-        # If loop finishes without returning
         st.error(f"Audio transcription failed on all models. Last error: {last_error}")
         return None
 
@@ -128,7 +167,6 @@ def text_to_speech(text):
     try:
         if not text: return
         tts = gTTS(text=text, lang='en')
-        # Save to memory buffer
         audio_buffer = io.BytesIO()
         tts.write_to_fp(audio_buffer)
         st.audio(audio_buffer, format="audio/mp3", start_time=0)
@@ -141,16 +179,20 @@ def main():
         page_title="AI Hotel Booking Assistant",
         page_icon="🏨",
         layout="wide",
+        initial_sidebar_state="expanded"
     )
     
-    # Inject CSS for better UI
     inject_custom_css()
-
     cfg = load_config()
     _init_app_state()
 
-    menu = st.sidebar.radio("Navigation", ["Chat Assistant", "Admin Dashboard"])
-    
+    # Sidebar Navigation
+    with st.sidebar:
+        st.title("Navigation")
+        menu = st.radio("", ["Chat Assistant", "Admin Dashboard"], label_visibility="collapsed")
+        st.divider()
+        st.info("ℹ️ **Tip:** You can speak to the assistant using the microphone icon!")
+
     if menu == "Chat Assistant":
         run_chat_assistant(cfg)
     else:
@@ -158,62 +200,59 @@ def main():
 
 
 def run_chat_assistant(cfg):
-    st.title("🏨 AI Hotel Booking Assistant")
+    # Header Section
+    col1, col2 = st.columns([1, 6])
+    with col1:
+        st.image("https://cdn-icons-png.flaticon.com/512/201/201623.png", width=60) # Generic Hotel Icon
+    with col2:
+        st.title("Grand Hotel AI Concierge")
+        st.caption("Book rooms, check status, and get answers instantly.")
 
-    st.subheader("Upload Hotel PDFs for RAG")
-    uploaded_files = st.file_uploader(
-        "Upload one or more hotel-related PDFs (policies, room details, etc.)",
-        type=["pdf"],
-        accept_multiple_files=True,
-    )
-
-    if uploaded_files:
-        if st.button("Build Knowledge Base from PDFs"):
-            with st.spinner("Processing and indexing PDFs..."):
+    # PDF Upload Expander (Hidden by default to clean up UI)
+    with st.expander("📂 Upload Hotel Documents (Admin Only)"):
+        uploaded_files = st.file_uploader(
+            "Upload policies, room details, etc.",
+            type=["pdf"],
+            accept_multiple_files=True,
+        )
+        if uploaded_files and st.button("Update Knowledge Base"):
+            with st.spinner("Processing documents..."):
                 rag_store, chunks = build_rag_store_from_uploads(
                     uploaded_files, RAGConfig()
                 )
                 st.session_state.rag_store = rag_store
                 st.session_state.rag_chunks = chunks
-            st.success(
-                f"Indexed {len(chunks)} chunks from {len(uploaded_files)} file(s)."
-            )
+            st.success(f"Indexed {len(chunks)} chunks successfully.")
 
-    # --- CHAT INTERFACE LAYOUT ---
-    chat_container = st.container(height=500)
+    st.divider()
 
-    # Display chat history INSIDE the container
+    # --- CHAT CONTAINER ---
+    # Calculates height to leave space for fixed input at bottom
+    chat_container = st.container(height=550)
+
     with chat_container:
+        if not st.session_state.messages:
+            st.info("👋 Hi there! I can help you book a room or answer questions about our hotel.")
+            
         for msg in st.session_state.messages:
             avatar = USER_AVATAR if msg["role"] == "user" else BOT_AVATAR
             with st.chat_message(msg["role"], avatar=avatar):
                 st.write(msg["content"])
 
-    # --- CONTROLS AREA (Pinned near bottom) ---
-    # We use columns to put the Toggle and Mic side-by-side
-    
+    # --- INPUT AREA ---
     user_input = None
-    input_source = "text" # Default
+    input_source = "text"
     
-    # Create two columns: Left for Mic, Right for Toggle (or vice versa)
-    c1, c2 = st.columns([3, 1])
+    # 1. Audio Input (Sits visually above text input)
+    # The 'label_visibility="collapsed"' makes it cleaner
+    audio_val = st.audio_input("Speak", label_visibility="collapsed")
     
-    with c1:
-        # 1. Audio Input (Larger column)
-        audio_val = st.audio_input("🎤 Speak")
-        
-    with c2:
-        # 2. Voice Response Toggle (Compact column)
-        st.write("") # Spacing to align with mic
-        st.write("") 
-        enable_voice_response = st.toggle("🔊 Read Aloud", value=False)
-    
-    # 3. Text Input (Always at very bottom)
-    text_val = st.chat_input("How can I help you with your hotel stay today?")
+    # 2. Text Input
+    text_val = st.chat_input("Type your message here...")
 
-    # --- PROCESS INPUTS ---
+    # Logic to prioritize inputs
     if audio_val:
-        with st.spinner("Transcribing voice..."):
+        with st.spinner("🎧 Listening..."):
             transcribed_text = transcribe_audio(audio_val)
             if transcribed_text:
                 user_input = transcribed_text
@@ -226,31 +265,24 @@ def run_chat_assistant(cfg):
     if not user_input:
         return
 
-    # --- UI FIX: Display User Message Immediately ---
+    # --- UI UPDATE ---
     with chat_container:
         with st.chat_message("user", avatar=USER_AVATAR):
             st.write(user_input)
     
     store_message(st.session_state.messages, "user", user_input)
 
-    # --- INTELLIGENT ROUTING LOGIC ---
-    
+    # --- INTENT & ROUTING ---
     detected_intent = detect_intent(user_input)
     final_intent = detected_intent
     
-    rag_keywords = [
-        "price", "cost", "how much", "rate", 
-        "wifi", "internet", "pool", "gym", "spa", "parking",
-        "check-in", "check-out", "policy", "refund", "cancel",
-        "breakfast", "food", "restaurant", "location", "near"
-    ]
+    # Simple Keyword Overrides
+    rag_keywords = ["price", "cost", "rate", "wifi", "pool", "gym", "check-in", "policy", "refund", "breakfast", "location"]
+    check_booking_keywords = ["check booking", "status", "my booking"]
     
-    check_booking_keywords = ["check booking", "status", "my booking", "booking details"]
     if any(kw in user_input.lower() for kw in check_booking_keywords):
         final_intent = "check_booking"
-
-    # Priority Routing
-    if any(kw in user_input.lower() for kw in rag_keywords):
+    elif any(kw in user_input.lower() for kw in rag_keywords):
         final_intent = "faq_rag"
     elif st.session_state.booking_state.active:
         if "cancel" in user_input.lower():
@@ -260,8 +292,8 @@ def run_chat_assistant(cfg):
         else:
             final_intent = "booking"
 
-    # Dispatch with Thinking State
-    with st.spinner("Thinking..."):
+    # --- GENERATE RESPONSE ---
+    with st.spinner("thinking..."):
         if final_intent == "booking":
             response_text = handle_booking_intent(cfg, user_input)
         elif final_intent == "check_booking":
@@ -269,35 +301,37 @@ def run_chat_assistant(cfg):
         elif final_intent == "faq_rag":
             response_text = handle_faq_intent(user_input)
         elif final_intent == "small_talk":
-            response_text = "Hello! I can help you book rooms, check your booking status, or answer questions about the hotel."
+            response_text = "Hello! I'm your hotel concierge. I can help with bookings, existing reservations, or hotel information."
         else:
-            response_text = "I’m not sure I understood. Are you trying to make a booking, check a booking, or ask about hotel details?"
+            response_text = "I didn't quite catch that. Could you clarify if you want to book a room or ask a question?"
 
-        # Display Response
+        # --- RESPOND & SPEAK IF NEEDED ---
         store_message(st.session_state.messages, "assistant", response_text)
         with chat_container:
             with st.chat_message("assistant", avatar=BOT_AVATAR):
                 st.write(response_text)
-                if enable_voice_response:
+                
+                # Smart Voice Logic:
+                # Only speak if the input came from Audio (Auto-Mode)
+                if input_source == "audio":
                     text_to_speech(response_text)
 
 
 def handle_check_booking(user_input: str) -> str:
     import re
     email_match = re.search(r'[\w\.-]+@[\w\.-]+', user_input)
-    
     if email_match:
         email = email_match.group(0)
         results = find_booking_by_email(email)
         if not results:
-            return f"I couldn't find any active bookings for {email}."
+            return f"I searched for {email} but couldn't find any active bookings."
         
-        msg = f"Found {len(results)} booking(s) for {email}:\n"
+        msg = f"**Found {len(results)} booking(s) for {email}:**\n"
         for b in results:
-            msg += f"\n- **ID:** {b['booking_id']}\n  **Type:** {b['type']}\n  **Date:** {b['date']} at {b['time']}\n  **Status:** {b['status']}\n"
+            msg += f"\n🆔 **ID:** `{b['booking_id']}`\n🛏️ **Type:** {b['type']}\n📅 **Date:** {b['date']} at {b['time']}\n✅ **Status:** {b['status']}\n---"
         return msg
     else:
-        return "Please provide your email address to check your booking."
+        return "Please provide your email address so I can look up your booking."
 
 
 def handle_booking_intent(cfg, user_message: str) -> str:
@@ -311,7 +345,7 @@ def handle_booking_intent(cfg, user_message: str) -> str:
 
     if "cancel" in lower_msg:
         st.session_state.booking_state = BookingState()
-        return "Booking cancelled. Let me know if you'd like to start again."
+        return "Booking cancelled. Let me know when you're ready to try again."
 
     if state.awaiting_confirmation:
         if "confirm" in lower_msg or lower_msg in ("yes", "yes, confirm"):
@@ -320,7 +354,7 @@ def handle_booking_intent(cfg, user_message: str) -> str:
 
             if not result["success"]:
                 st.session_state.booking_state = BookingState()
-                return f"Error saving booking: {result['error']}"
+                return f"⚠️ Error saving booking: {result['error']}"
 
             booking_id = result["booking_id"]
             email_body = (
@@ -336,23 +370,23 @@ def handle_booking_intent(cfg, user_message: str) -> str:
                 body=email_body,
             )
             
-            msg = f"🎉 Booking confirmed! ID: {booking_id}. "
+            msg = f"🎉 **Success!** Your booking is confirmed.\n\n🆔 **Booking ID:** `{booking_id}`"
             if not email_result["success"]:
-                msg += f" (Email failed: {email_result['error']})"
+                msg += f"\n\n(Note: Confirmation email failed to send, but your booking is saved.)"
             else:
-                msg += " A confirmation email has been sent."
+                msg += "\n\n📧 A confirmation email has been sent to your inbox."
 
             st.session_state.booking_state = BookingState()
             return msg
 
-        return "Type 'confirm' to finalize or 'cancel' to stop."
+        return "Please type **'confirm'** to finalize your booking, or **'cancel'** to stop."
 
     state = update_state_from_message(user_message, state)
     st.session_state.booking_state = state
 
     if state.errors:
         field, msg = next(iter(state.errors.items()))
-        return msg
+        return f"⚠️ {msg}"
 
     missing = get_missing_fields(state)
 
@@ -365,22 +399,21 @@ def handle_booking_intent(cfg, user_message: str) -> str:
     st.session_state.booking_state = state
 
     return (
-        "Here are your booking details:\n\n"
-        f"{summary}\n"
-        "Type **'confirm'** to finalize or **'cancel'**."
+        "**Please confirm your details:**\n\n"
+        f"{summary}\n\n"
+        "Type **'confirm'** to finish."
     )
 
 
 def handle_faq_intent(user_message: str) -> str:
     store: RAGStore = st.session_state.rag_store
-
     if store is None or store.size == 0:
-        return "No hotel documents indexed yet. Upload PDFs and click 'Build Knowledge Base', then ask your question again."
+        return "⚠️ I can't answer that yet. Please upload the hotel policy documents in the sidebar first."
     else:
         return rag_tool(store, user_message)
 
 
-# Modified respond function handled inline within run_chat_assistant
+# Legacy respond function not used in new flow
 def respond(text: str, enable_voice: bool = False):
     store_message(st.session_state.messages, "assistant", text)
     with st.chat_message("assistant", avatar=BOT_AVATAR):
