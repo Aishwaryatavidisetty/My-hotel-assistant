@@ -48,86 +48,42 @@ def _init_app_state():
 def inject_custom_css():
     st.markdown("""
     <style>
-        /* --- Global App Styling --- */
-        .stApp {
-            background-color: #ffffff;
-        }
-        
-        /* --- Chat Messages --- */
-        /* User Message (Right, Blue) */
-        div[data-testid="stChatMessage"]:nth-child(odd) {
-            flex-direction: row-reverse;
-            background-color: transparent;
-            border: none;
-            margin-bottom: 8px;
-        }
-        
-        div[data-testid="stChatMessage"]:nth-child(odd) .stChatMessageContent {
-            background-color: #007bff;
-            color: white !important;
-            border-radius: 18px 18px 0px 18px;
-            padding: 10px 15px;
-            margin-bottom: 5px;
-            border: none;
-            width: fit-content;
-            max-width: 80%;
-            margin-left: auto; /* Push to right */
-        }
-        /* Force text color in user bubble */
-        div[data-testid="stChatMessage"]:nth-child(odd) p {
-            color: white !important;
-        }
-        div[data-testid="stChatMessage"]:nth-child(odd) [data-testid="stChatMessageAvatarBackground"] {
-            display: none; /* Hide avatar for cleaner look, or keep if preferred */
-        }
-
-        /* Assistant Message (Gray, Left aligned) */
-        div[data-testid="stChatMessage"]:nth-child(even) {
-            background-color: #f1f0f0;
-            color: black;
-            border-radius: 18px 18px 18px 0px;
-            padding: 10px 15px;
-            margin-bottom: 5px;
-            border: none;
-            width: fit-content;
-            max-width: 80%;
-        }
-        
-        /* --- Integrated Audio Input Styling --- */
-        /* This hacks the audio widget to float near the chat input */
+        /* --- Audio Input Styling (Floating Bottom Right) --- */
         .stAudioInput {
             position: fixed;
-            bottom: 10px; /* Adjust based on chat input height */
-            left: 20px;   /* Position to the left of the text box */
-            z-index: 1000;
-            width: 40px;  /* Small width to look like a button */
-            height: 40px;
+            bottom: 20px;
+            right: 20px;
+            z-index: 9999;
+            width: 50px;
+            height: 50px;
         }
         
-        /* Hide the label and extra spacing of audio widget */
-        .stAudioInput > label {
+        /* Style the Mic Button */
+        .stAudioInput button {
+            background-color: #2563eb;
+            color: white;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            border: none;
+            box-shadow: 0 4px 6px rgba(37, 99, 235, 0.3);
+        }
+        
+        /* Hover Effect */
+        .stAudioInput button:hover {
+            background-color: #1d4ed8;
+            transform: scale(1.05);
+        }
+        
+        /* Hide label */
+        .stAudioInput label {
             display: none;
         }
+
+        /* --- Hide Header/Footer for clean look --- */
+        header {visibility: hidden;}
+        footer {visibility: hidden;}
         
-        /* Make the internal button round and icon-like */
-        .stAudioInput button {
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            background-color: #f0f2f6;
-            border: none;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-        
-        /* Adjust Chat Input to make room for the mic on the left (if possible) 
-           Note: Streamlit doesn't easily allow padding left on chat_input via CSS class directly 
-           without affecting other elements, so we float the mic on top-left or right.
-        */
-        
-        /* Clean up header */
-        header {
-            visibility: hidden;
-        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -188,19 +144,19 @@ def main():
         page_title="AI Hotel Booking Assistant",
         page_icon="🏨",
         layout="wide",
-        initial_sidebar_state="collapsed" # Hide sidebar for cleaner look
+        initial_sidebar_state="expanded" # Restored Sidebar
     )
     
     inject_custom_css()
     cfg = load_config()
     _init_app_state()
 
-    # Minimal Sidebar
+    # --- SIDEBAR NAVIGATION (Restored) ---
     with st.sidebar:
-        st.title("Menu")
+        st.title("Navigation")
         menu = st.radio("Go to", ["Chat Assistant", "Admin Dashboard"])
         st.divider()
-        st.info("💡 You can speak to the assistant using the floating microphone!")
+        st.info("💡 **Voice Tip:** Click the blue microphone icon at the bottom right to speak!")
 
     if menu == "Chat Assistant":
         run_chat_assistant(cfg)
@@ -209,17 +165,14 @@ def main():
 
 
 def run_chat_assistant(cfg):
-    # Minimal Header
-    col1, col2 = st.columns([0.5, 8])
-    with col1:
-        st.write("🏨")
-    with col2:
-        st.markdown("### Grand Hotel Concierge")
+    # Standard Header
+    st.title("🏨 Grand Hotel AI Concierge")
+    st.caption("Your personal assistant for bookings and hotel services.")
 
-    # Hidden File Uploader
-    with st.expander("⚙️ Admin Settings (Upload PDFs)"):
+    # File Uploader in Expander (Cleaner UI)
+    with st.expander("📂 Admin: Upload Hotel Documents"):
         uploaded_files = st.file_uploader(
-            "Upload policies",
+            "Upload policies (PDF)",
             type=["pdf"],
             accept_multiple_files=True,
         )
@@ -233,16 +186,15 @@ def run_chat_assistant(cfg):
             st.success(f"Indexed {len(chunks)} chunks.")
 
     # --- CHAT AREA ---
-    # Max height container to keep chat scrolling nicely above inputs
-    chat_container = st.container(height=600)
+    # Container to keep messages scrollable
+    chat_container = st.container(height=500)
 
     with chat_container:
         if not st.session_state.messages:
-            st.markdown("*How can I help you today?*")
+            st.info("👋 Hi! Ask me about room prices, amenities, or say 'I want to book a room'.")
             
         for msg in st.session_state.messages:
-            # We removed avatars in CSS for a cleaner "text message" look on User side
-            # But we keep the structure
+            # Reverted to standard visible avatars
             with st.chat_message(msg["role"], avatar=BOT_AVATAR if msg["role"]=="assistant" else USER_AVATAR):
                 st.write(msg["content"])
 
@@ -250,20 +202,20 @@ def run_chat_assistant(cfg):
     user_input = None
     input_source = "text"
     
-    # 1. Voice Input (Floating via CSS)
+    # 1. Voice Input (Floating Bottom Right)
     audio_val = st.audio_input("Voice", label_visibility="collapsed")
     
-    # 2. Text Input (Standard Streamlit Bottom Bar)
-    text_val = st.chat_input("Message...")
+    # 2. Text Input (Standard Bottom)
+    text_val = st.chat_input("Type your message...")
 
     # Logic
     if audio_val:
-        with st.spinner("🎧 Processing voice..."):
+        with st.spinner("🎧 Transcribing..."):
             transcribed = transcribe_audio(audio_val)
             if transcribed:
                 user_input = transcribed
                 input_source = "audio"
-
+    
     if text_val:
         user_input = text_val
         input_source = "text"
@@ -271,7 +223,7 @@ def run_chat_assistant(cfg):
     if not user_input:
         return
 
-    # --- UI UPDATE ---
+    # Update UI
     with chat_container:
         with st.chat_message("user", avatar=USER_AVATAR):
             st.write(user_input)
@@ -284,8 +236,6 @@ def run_chat_assistant(cfg):
     
     rag_keywords = ["price", "cost", "rate", "wifi", "pool", "gym", "check-in", "policy", "refund", "breakfast", "location"]
     check_booking_keywords = ["check booking", "status", "my booking"]
-    # NEW: Keywords to catch affirmation to start a booking
-    start_booking_keywords = ["book", "yes", "sure", "yep", "confirm", "reservation"]
     
     if any(kw in user_input.lower() for kw in check_booking_keywords):
         final_intent = "check_booking"
@@ -298,9 +248,6 @@ def run_chat_assistant(cfg):
              final_intent = "faq_rag"
         else:
             final_intent = "booking"
-    # NEW: Check if user said "yes" or "book" to start a booking (if not active)
-    elif any(kw in user_input.lower() for kw in start_booking_keywords):
-        final_intent = "booking"
 
     # Generate Answer
     if final_intent == "booking":
@@ -320,7 +267,7 @@ def run_chat_assistant(cfg):
         with st.chat_message("assistant", avatar=BOT_AVATAR):
             st.write(response_text)
             
-            # Smart Voice Response
+            # Smart Voice Response (Only if user spoke)
             if input_source == "audio":
                 text_to_speech(response_text)
 
@@ -332,7 +279,7 @@ def handle_check_booking(user_input: str) -> str:
         email = email_match.group(0)
         results = find_booking_by_email(email)
         if not results:
-            return f"No bookings found for {email}."
+            return f"No bookings found for **{email}**."
         
         msg = f"**Bookings for {email}:**\n"
         for b in results:
@@ -353,7 +300,7 @@ def handle_booking_intent(cfg, user_message: str) -> str:
 
     if "cancel" in lower_msg:
         st.session_state.booking_state = BookingState()
-        return "Booking cancelled."
+        return "🚫 Booking cancelled."
 
     if state.awaiting_confirmation:
         if "confirm" in lower_msg or lower_msg in ("yes", "yes, confirm"):
@@ -362,11 +309,13 @@ def handle_booking_intent(cfg, user_message: str) -> str:
 
             if not result["success"]:
                 st.session_state.booking_state = BookingState()
-                return f"Error: {result['error']}"
+                return f"⚠️ Error: {result['error']}"
 
             booking_id = result["booking_id"]
+            
+            # --- EMAIL CONTENT UPDATE ---
             email_body = (
-                f"Your booking is confirmed!\n\n"
+                f"Your Booking is confirmed!\n\n"
                 f"Booking ID: {booking_id}\n\n"
                 f"{generate_confirmation_text(state)}"
             )
@@ -378,18 +327,18 @@ def handle_booking_intent(cfg, user_message: str) -> str:
                 body=email_body,
             )
             
-            msg = f"🎉 **Confirmed!** ID: `{booking_id}`"
+            msg = f"🎉 **Success!** Your booking ID is `{booking_id}`."
             st.session_state.booking_state = BookingState()
             return msg
 
-        return "Type **'confirm'** to finish."
+        return "Please type **'confirm'** to finish."
 
     state = update_state_from_message(user_message, state)
     st.session_state.booking_state = state
 
     if state.errors:
         field, msg = next(iter(state.errors.items()))
-        return msg
+        return f"⚠️ {msg}"
 
     missing = get_missing_fields(state)
 
@@ -400,13 +349,13 @@ def handle_booking_intent(cfg, user_message: str) -> str:
     state.awaiting_confirmation = True
     st.session_state.booking_state = state
 
-    return f"**Confirm details:**\n\n{summary}\n\nType **'confirm'**."
+    return f"**Please confirm details:**\n\n{summary}\n\nType **'confirm'**."
 
 
 def handle_faq_intent(user_message: str) -> str:
     store: RAGStore = st.session_state.rag_store
     if store is None or store.size == 0:
-        return "I can't answer that yet. Please upload documents first."
+        return "I can't answer that yet. Please upload hotel documents first."
     else:
         return rag_tool(store, user_message)
 
