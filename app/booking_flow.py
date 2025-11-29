@@ -132,7 +132,13 @@ def llm_extract_booking_fields(message: str, state: BookingState) -> Dict[str, A
     prompt = f"{system_prompt}\n\nUser Message: {message}"
 
     # --- ROBUST MODEL FALLBACK ---
-    models_to_try = ['gemini-1.5-flash', 'gemini-1.5-flash-001', 'gemini-pro']
+    models_to_try = [
+        'gemini-1.5-flash', 
+        'gemini-1.5-flash-001',
+        'gemini-1.5-pro',
+        'gemini-1.0-pro', 
+        'gemini-pro'
+    ]
     
     content = ""
     last_error = None
@@ -142,17 +148,21 @@ def llm_extract_booking_fields(message: str, state: BookingState) -> Dict[str, A
             model = genai.GenerativeModel(model_name)
             response = model.generate_content(prompt)
             content = response.text
-            break # Success, stop trying models
+            break # Success
         except Exception as e:
             last_error = e
             continue
     
     if not content:
-        st.error(f"Extraction failed on all models. Last error: {last_error}")
+        # Debugging: Print available models if all fail
+        try:
+            available = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            st.error(f"Extraction failed. Available models: {available}")
+        except:
+            st.error(f"Extraction failed. Error: {last_error}")
         return {}
 
     try:
-        # Clean up code blocks
         content = content.replace("```json", "").replace("```", "").strip()
         return json.loads(content)
     except Exception as e:

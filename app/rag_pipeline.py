@@ -10,7 +10,6 @@ from pypdf import PdfReader
 import tiktoken
 import streamlit as st
 import google.generativeai as genai
-# Local Embeddings
 from sentence_transformers import SentenceTransformer
 
 
@@ -192,9 +191,15 @@ def rag_tool(store: RAGStore, question: str) -> str:
     
     user_prompt = f"{system_prompt}\n\nContext:\n{context_text}\n\nQuestion: {question}"
     
-    # --- ROBUST MODEL FALLBACK ---
-    # We try preferred models in order. If one fails (404), we try the next.
-    models_to_try = ['gemini-1.5-flash', 'gemini-1.5-flash-001', 'gemini-pro']
+    # --- MODEL FALLBACK WITH DEBUGGING ---
+    # We added 'gemini-1.0-pro' which is often the fallback for older keys
+    models_to_try = [
+        'gemini-1.5-flash', 
+        'gemini-1.5-flash-001',
+        'gemini-1.5-pro',
+        'gemini-1.0-pro', 
+        'gemini-pro'
+    ]
     
     last_error = None
     for model_name in models_to_try:
@@ -206,4 +211,9 @@ def rag_tool(store: RAGStore, question: str) -> str:
             last_error = e
             continue
             
-    return f"Error generating answer after trying models {models_to_try}: {str(last_error)}"
+    # If all models fail, PRINT AVAILABLE MODELS to help debug
+    try:
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        return f"❌ All models failed. \n\n**Available Models for your API Key:** \n{available_models} \n\n**Last Error:** {last_error}"
+    except Exception as e:
+        return f"❌ Critical Error: Could not list models. Check your API Key. Error: {e}"
