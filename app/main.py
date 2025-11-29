@@ -48,54 +48,7 @@ def _init_app_state():
 def inject_custom_css():
     st.markdown("""
     <style>
-        /* --- Chat Messages --- */
-        
-        /* User Message (Right, Blue) */
-        div[data-testid="stChatMessage"]:nth-child(odd) {
-            flex-direction: row-reverse;
-            background-color: transparent;
-            border: none;
-            margin-bottom: 8px;
-        }
-        
-        div[data-testid="stChatMessage"]:nth-child(odd) .stChatMessageContent {
-            background-color: #2563eb; /* Royal Blue */
-            color: white !important;
-            border-radius: 20px 20px 4px 20px;
-            padding: 10px 15px;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-            max-width: 80%;
-            text-align: left;
-        }
-        
-        /* Force white text in user bubbles */
-        div[data-testid="stChatMessage"]:nth-child(odd) p, 
-        div[data-testid="stChatMessage"]:nth-child(odd) div {
-            color: white !important;
-        }
-
-        /* Assistant Message (Left, Default Streamlit Gray/White) */
-        div[data-testid="stChatMessage"]:nth-child(even) {
-            background-color: transparent;
-            border: none;
-            margin-bottom: 8px;
-        }
-        
-        div[data-testid="stChatMessage"]:nth-child(even) .stChatMessageContent {
-            background-color: #f0f2f6; /* Light Gray */
-            color: black;
-            border-radius: 20px 20px 20px 4px;
-            padding: 10px 15px;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-            max-width: 80%;
-        }
-
-        /* Hide Default Avatars */
-        [data-testid="stChatMessageAvatarBackground"] {
-            display: none;
-        }
-
-        /* --- Audio Input Styling (Floating) --- */
+        /* --- Audio Input Styling (Floating Bottom Right) --- */
         .stAudioInput {
             position: fixed;
             bottom: 20px;
@@ -241,7 +194,7 @@ def run_chat_assistant(cfg):
             st.info("👋 Hi! Ask me about room prices, amenities, or say 'I want to book a room'.")
             
         for msg in st.session_state.messages:
-            # Render messages using the standard chat_message which our CSS styles
+            # Reverted to standard visible avatars
             with st.chat_message(msg["role"], avatar=BOT_AVATAR if msg["role"]=="assistant" else USER_AVATAR):
                 st.write(msg["content"])
 
