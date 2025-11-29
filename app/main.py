@@ -114,22 +114,13 @@ def main():
 
     menu = st.sidebar.radio("Navigation", ["Chat Assistant", "Admin Dashboard"])
     
-    # --- UX PREFERENCES ---
     if menu == "Chat Assistant":
-        st.sidebar.header("Communication Preferences")
-        # Smart Selection for Voice
-        voice_mode = st.sidebar.radio(
-            "Bot Voice Response:",
-            options=["Auto (Match My Input)", "Always On", "Always Off"],
-            index=0,
-            help="Auto: The bot speaks only if you use the microphone."
-        )
-        run_chat_assistant(cfg, voice_mode)
+        run_chat_assistant(cfg)
     else:
         render_admin_dashboard()
 
 
-def run_chat_assistant(cfg, voice_mode):
+def run_chat_assistant(cfg):
     st.title("🏨 AI Hotel Booking Assistant")
 
     st.subheader("Upload Hotel PDFs for RAG")
@@ -153,7 +144,6 @@ def run_chat_assistant(cfg, voice_mode):
 
     # --- CHAT INTERFACE LAYOUT ---
     # We use a fixed-height container for messages so the inputs stay at the bottom.
-    # Adjust height (e.g., 500px) as needed to fit your screen.
     chat_container = st.container(height=500)
 
     # Display chat history INSIDE the container
@@ -165,12 +155,15 @@ def run_chat_assistant(cfg, voice_mode):
 
     # --- INPUT AREA (Pinned near bottom) ---
     user_input = None
-    input_source = "text" # Default
     
-    # 1. Audio Input: This will now sit right below the chat container
+    # 1. Voice Response Toggle (Right above the mic)
+    # This places a simple switch near the input area
+    enable_voice_response = st.toggle("📣 Read responses aloud", value=False)
+    
+    # 2. Audio Input
     audio_val = st.audio_input("🎤 Speak to the assistant")
     
-    # 2. Text Input: This automatically pins to the very bottom
+    # 3. Text Input
     text_val = st.chat_input("How can I help you with your hotel stay today?")
 
     if audio_val:
@@ -178,25 +171,12 @@ def run_chat_assistant(cfg, voice_mode):
             transcribed_text = transcribe_audio(audio_val)
             if transcribed_text:
                 user_input = transcribed_text
-                input_source = "audio"
 
     if text_val:
         user_input = text_val
-        input_source = "text"
 
     if not user_input:
         return
-
-    # --- DETERMINE IF BOT SHOULD SPEAK ---
-    should_speak = False
-    if voice_mode == "Always On":
-        should_speak = True
-    elif voice_mode == "Auto (Match My Input)":
-        if input_source == "audio":
-            should_speak = True
-        else:
-            should_speak = False
-    # If "Always Off", should_speak remains False
 
     # --- UI FIX: Display User Message Immediately ---
     # We write this into the container so it appears in history instantly
@@ -247,14 +227,13 @@ def run_chat_assistant(cfg, voice_mode):
         else:
             response_text = "I’m not sure I understood. Are you trying to make a booking, check a booking, or ask about hotel details?"
 
-        # Display Response with Voice Preference
-        # We need to manually write the response to the container because 'respond()'
-        # blindly writes to st (which might be outside the container context).
+        # Display Response
+        # We write directly to the container and pass the toggle value
         store_message(st.session_state.messages, "assistant", response_text)
         with chat_container:
             with st.chat_message("assistant", avatar=BOT_AVATAR):
                 st.write(response_text)
-                if should_speak:
+                if enable_voice_response:
                     text_to_speech(response_text)
 
 
