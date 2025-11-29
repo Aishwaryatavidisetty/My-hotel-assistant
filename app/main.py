@@ -3,9 +3,7 @@ from __future__ import annotations
 import sys
 import os
 
-# --- CRITICAL FIX: Add project root to sys.path ---
-# This block ensures that Python can find the 'db' folder (which is in the parent directory)
-# regardless of how you run the Streamlit command.
+# --- Add project root to sys.path ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 if parent_dir not in sys.path:
@@ -13,14 +11,13 @@ if parent_dir not in sys.path:
 
 import streamlit as st
 
-# IMPORTS (Now safe because sys.path includes the root)
+# IMPORTS
 from config import load_config
 from chat_logic import detect_intent, store_message
 from rag_pipeline import RAGStore, RAGConfig, build_rag_store_from_uploads
 from rag_pipeline import rag_tool 
 from tools import booking_persistence_tool, email_tool
 from admin_dashboard import render_admin_dashboard
-# from db.database import init_db # REMOVED: Function does not exist in db.database
 
 from booking_flow import (
     BookingState,
@@ -50,7 +47,6 @@ def main():
     )
 
     cfg = load_config()
-    # init_db() # REMOVED: Skipping DB initialization in code
     _init_app_state()
 
     menu = st.sidebar.radio("Navigation", ["Chat Assistant", "Admin Dashboard"])
@@ -93,15 +89,36 @@ def run_chat_assistant(cfg):
         return
 
     store_message(st.session_state.messages, "user", user_input)
-    intent = detect_intent(user_input)
 
-    if intent == "booking":
+    # --- INTELLIGENT ROUTING LOGIC ---
+    
+    # 1. Always detect intent first to allow for questions/interruptions
+    detected_intent = detect_intent(user_input)
+    final_intent = detected_intent
+
+    # 2. Check context: Are we in an active booking?
+    if st.session_state.booking_state.active:
+        # If the user asks a clear FAQ question, let them ask it!
+        if detected_intent == "faq_rag":
+            final_intent = "faq_rag"
+        # If the user tries to cancel, let them
+        elif "cancel" in user_input.lower():
+            final_intent = "booking" # Let booking handler process the cancel
+        # If the intent is unclear (e.g., user just typed "John"), 
+        # assume it's the answer to the booking question.
+        elif detected_intent == "unknown" or detected_intent == "small_talk":
+             final_intent = "booking"
+        # Otherwise, stick with what was detected (e.g. they might have explicitly said "I want to book")
+
+    # 3. Dispatch
+    if final_intent == "booking":
         handle_booking_intent(cfg, user_input)
-    elif intent == "faq_rag":
+    elif final_intent == "faq_rag":
         handle_faq_intent(user_input)
-    elif intent == "small_talk":
+    elif final_intent == "small_talk":
         respond("Hello! I can help you book rooms or answer questions about the hotel.")
     else:
+        # Fallback for completely unknown inputs when NOT in booking mode
         respond(
             "I’m not sure I understood. "
             "Are you trying to make a hotel booking or asking about hotel details?"
@@ -110,9 +127,21 @@ def run_chat_assistant(cfg):
 
 def handle_booking_intent(cfg, user_message: str):
     state: BookingState = st.session_state.booking_state
+    
+    # Activate booking mode if not already active
+    if not state.active:
+        state.active = True
+        st.session_state.booking_state = state
+
     lower_msg = user_message.strip().lower()
 
-    # Confirmation
+    # --- Cancellation Check ---
+    if "cancel" in lower_msg:
+        respond("Booking cancelled. Let me know if you'd like to start again.")
+        st.session_state.booking_state = BookingState() # Reset and deactivate
+        return
+
+    # --- Confirmation Phase ---
     if state.awaiting_confirmation:
         if "confirm" in lower_msg or lower_msg in ("yes", "yes, confirm"):
             payload = state.to_payload()
@@ -150,23 +179,21 @@ def handle_booking_intent(cfg, user_message: str):
             st.session_state.booking_state = BookingState()
             return
 
-        if "cancel" in lower_msg:
-            respond("Booking cancelled. Let me know if you'd like to start again.")
-            st.session_state.booking_state = BookingState()
-            return
-
-        respond("Type 'confirm' or 'cancel'.")
+        respond("Type 'confirm' to finalize or 'cancel' to stop.")
         return
 
-    # Update state
+    # --- Data Collection Phase ---
+    # Update state with new info
     state = update_state_from_message(user_message, state)
     st.session_state.booking_state = state
 
+    # Check for validation errors
     if state.errors:
         field, msg = next(iter(state.errors.items()))
         respond(msg)
         return
 
+    # Check what is still missing
     missing = get_missing_fields(state)
 
     if missing:
@@ -174,7 +201,7 @@ def handle_booking_intent(cfg, user_message: str):
         respond(next_question_for_missing_field(next_field))
         return
 
-    # Ask for confirmation
+    # If nothing missing, ask for confirmation
     summary = generate_confirmation_text(state)
     state.awaiting_confirmation = True
     st.session_state.booking_state = state
@@ -195,7 +222,8 @@ def handle_faq_intent(user_message: str):
             "'Build Knowledge Base', then ask your question again."
         )
     else:
-        # Calls the function imported from rag_pipeline.py
+        # Note: We do NOT deactivate booking state here. 
+        # This allows the user to ask a question and then resume booking.
         respond(rag_tool(store, user_message))
 
 
