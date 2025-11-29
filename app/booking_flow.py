@@ -119,8 +119,18 @@ def llm_extract_booking_fields(message: str, state: BookingState) -> Dict[str, A
     # Use flash model for speed
     model = genai.GenerativeModel('gemini-1.5-flash')
 
+    # --- CONTEXT AWARENESS FIX ---
+    # We check what is missing to give the LLM a hint.
+    # If the bot just asked "What is your name?", we tell the LLM to expect a name.
+    missing = get_missing_fields(state)
+    expected_field = missing[0] if missing else "none"
+    today = date.today().isoformat()
+
     system_prompt = (
         "You extract booking fields from user text. "
+        f"CURRENT CONTEXT: The system is asking the user for: '{expected_field}'. "
+        f"TODAY'S DATE: {today}. "
+        "If the user provides a short answer (e.g. 'John' or 'tomorrow'), assume it refers to the requested field. "
         "Return a valid JSON object (no markdown formatting) with keys: "
         "customer_name, email, phone, booking_type, date, time. "
         "Use date format YYYY-MM-DD and time HH:MM (24-hour). "
@@ -146,6 +156,10 @@ def llm_extract_booking_fields(message: str, state: BookingState) -> Dict[str, A
 # ----------------- STATE UPDATE ------------------------
 
 def update_state_from_message(message: str, state: BookingState) -> BookingState:
+    
+    # --- ACTIVE FLAG FIX ---
+    # Ensure the session stays active whenever we process a message
+    state.active = True
 
     extracted = llm_extract_booking_fields(message, state)
     state.errors.clear()

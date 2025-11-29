@@ -1,4 +1,3 @@
-# app/config.py
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -25,8 +24,7 @@ class EmailConfig:
 @dataclass
 class SupabaseConfig:
     url: str
-    anon_key: str
-    service_key: str
+    service_key: str  # Removed anon_key as we primarily use service_key for admin tasks
 
 
 @dataclass
@@ -41,12 +39,20 @@ class AppConfig:
 def load_config() -> AppConfig:
     secrets = st.secrets
 
-    # --- Gemini ---
-    gemini_cfg = GeminiConfig(
-        api_key=secrets["gemini"]["api_key"],
-    )
+    # --- Gemini (Google) ---
+    # Checks for [google] section first, then falls back to [gemini]
+    if "google" in secrets:
+        api_key = secrets["google"]["api_key"]
+    elif "gemini" in secrets:
+        api_key = secrets["gemini"]["api_key"]
+    else:
+        # Fallback for simple key entry
+        api_key = secrets.get("google_api_key", "")
+
+    gemini_cfg = GeminiConfig(api_key=api_key)
 
     # --- Email ---
+    # users often store ports as integers or strings, converting to int ensures safety
     email_cfg = EmailConfig(
         smtp_host=secrets["email"]["smtp_host"],
         smtp_port=int(secrets["email"]["smtp_port"]),
@@ -59,7 +65,6 @@ def load_config() -> AppConfig:
     # --- Supabase ---
     supabase_cfg = SupabaseConfig(
         url=secrets["supabase"]["url"],
-        anon_key=secrets["supabase"]["anon_key"],
         service_key=secrets["supabase"]["service_key"],
     )
 
