@@ -166,11 +166,11 @@ def main():
 
 def run_chat_assistant(cfg):
     # Standard Header
-    st.title("🏨 AI Hotel Booking Assistant")
+    st.title("🏨 Grand Hotel AI Concierge")
     st.caption("Your personal assistant for bookings and hotel services.")
 
     # File Uploader in Expander (Cleaner UI)
-    with st.expander("📂 Upload Hotel Documents"):
+    with st.expander("📂 Admin: Upload Hotel Documents"):
         uploaded_files = st.file_uploader(
             "Upload policies (PDF)",
             type=["pdf"],
@@ -312,8 +312,12 @@ def handle_booking_intent(cfg, user_message: str) -> str:
                 return f"⚠️ Error: {result['error']}"
 
             booking_id = result["booking_id"]
+            
+            # --- EMAIL CONTENT UPDATE ---
             email_body = (
-                f"Booking ID: {booking_id}\n\n{generate_confirmation_text(state)}"
+                f"Booking is confirmed!\n\n"
+                f"Booking ID: {booking_id}\n\n"
+                f"{generate_confirmation_text(state)}"
             )
 
             email_result = email_tool(
