@@ -147,31 +147,46 @@ def build_rag_store_from_uploads(uploaded_files, cfg: RAGConfig | None = None):
 
     # Embed all chunks
     embeddings = []
-    # --- RATE LIMIT FIX ---
-    # Reduced batch size and added sleep to avoid 429 Errors
-    batch_size = 10  
+    
+    # --- RATE LIMIT FIX 2.0 ---
+    # Drastically reduced batch size and strict retry logic
+    batch_size = 5  
 
     for i in range(0, len(texts), batch_size):
         batch = texts[i:i + batch_size]
-        try:
-            # Gemini Embedding Call
-            result = genai.embed_content(
-                model=cfg.embedding_model,
-                content=batch,
-                task_type="retrieval_document"
-            )
-            # result['embedding'] is a list of embeddings
-            emb = result['embedding']
-            embeddings.extend(emb)
-            
-            # --- CRITICAL: Sleep to respect free tier rate limits ---
-            time.sleep(2.0) 
-            
-        except Exception as e:
-            st.error(f"Error embedding batch: {e}")
-            # If we hit a rate limit, try waiting longer before skipping
-            time.sleep(5.0)
-            continue
+        
+        # Retry loop with exponential backoff
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # Gemini Embedding Call
+                result = genai.embed_content(
+                    model=cfg.embedding_model,
+                    content=batch,
+                    task_type="retrieval_document"
+                )
+                emb = result['embedding']
+                embeddings.extend(emb)
+                
+                # Success! Sleep to respect free tier rate limits
+                time.sleep(4.0) 
+                break # Exit the retry loop
+                
+            except Exception as e:
+                # Check for rate limit errors
+                if "429" in str(e) or "Quota" in str(e):
+                    if attempt < max_retries - 1:
+                        # Exponential backoff: 20s, 40s, 60s
+                        wait_time = (attempt + 1) * 20 
+                        st.warning(f"Rate limit hit. Pausing for {wait_time} seconds before retrying...")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        st.error(f"Failed to embed batch after {max_retries} retries. You may have hit the daily quota.")
+                else:
+                    # Non-quota error, log and skip this batch
+                    st.error(f"Error embedding batch: {e}")
+                    break
 
     if not embeddings:
         return RAGStore(dim=768), []
