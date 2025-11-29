@@ -114,16 +114,22 @@ def main():
 
     menu = st.sidebar.radio("Navigation", ["Chat Assistant", "Admin Dashboard"])
     
-    # Optional Voice Mode Toggle
-    enable_voice = st.sidebar.checkbox("Enable Voice Mode (TTS)", value=False)
-
+    # --- UX PREFERENCES ---
     if menu == "Chat Assistant":
-        run_chat_assistant(cfg, enable_voice)
+        st.sidebar.header("Communication Preferences")
+        # Smart Selection for Voice
+        voice_mode = st.sidebar.radio(
+            "Bot Voice Response:",
+            options=["Auto (Match My Input)", "Always On", "Always Off"],
+            index=0,
+            help="Auto: The bot speaks only if you use the microphone."
+        )
+        run_chat_assistant(cfg, voice_mode)
     else:
         render_admin_dashboard()
 
 
-def run_chat_assistant(cfg, enable_voice):
+def run_chat_assistant(cfg, voice_mode):
     st.title("🏨 AI Hotel Booking Assistant")
 
     st.subheader("Upload Hotel PDFs for RAG")
@@ -153,6 +159,7 @@ def run_chat_assistant(cfg, enable_voice):
 
     # --- INPUT: TEXT OR AUDIO ---
     user_input = None
+    input_source = "text" # Default
     
     # 1. Audio Input (New Streamlit feature)
     audio_val = st.audio_input("🎤 Speak to the assistant")
@@ -165,12 +172,25 @@ def run_chat_assistant(cfg, enable_voice):
             transcribed_text = transcribe_audio(audio_val)
             if transcribed_text:
                 user_input = transcribed_text
+                input_source = "audio"
 
     if text_val:
         user_input = text_val
+        input_source = "text"
 
     if not user_input:
         return
+
+    # --- DETERMINE IF BOT SHOULD SPEAK ---
+    should_speak = False
+    if voice_mode == "Always On":
+        should_speak = True
+    elif voice_mode == "Auto (Match My Input)":
+        if input_source == "audio":
+            should_speak = True
+        else:
+            should_speak = False
+    # If "Always Off", should_speak remains False
 
     # --- UI FIX: Display User Message Immediately ---
     with st.chat_message("user", avatar=USER_AVATAR):
@@ -219,8 +239,8 @@ def run_chat_assistant(cfg, enable_voice):
         else:
             response_text = "I’m not sure I understood. Are you trying to make a booking, check a booking, or ask about hotel details?"
 
-        # Display Response
-        respond(response_text, enable_voice)
+        # Display Response with Voice Preference
+        respond(response_text, should_speak)
 
 
 def handle_check_booking(user_input: str) -> str:
