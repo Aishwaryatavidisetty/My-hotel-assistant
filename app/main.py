@@ -44,6 +44,40 @@ def _init_app_state():
     if "rag_chunks" not in st.session_state:
         st.session_state.rag_chunks = []
 
+# --- CSS STYLING ---
+def inject_custom_css():
+    st.markdown("""
+    <style>
+        /* Chat Container Padding */
+        .stChatInput {
+            padding-bottom: 1rem;
+        }
+        
+        /* Style the User Message (Blueish) */
+        div[data-testid="stChatMessage"]:nth-child(odd) {
+            background-color: #f0f2f6; 
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 10px;
+        }
+
+        /* Style the Assistant Message (White/Clean) */
+        div[data-testid="stChatMessage"]:nth-child(even) {
+            background-color: #ffffff;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 10px;
+        }
+        
+        /* Compact Audio Input */
+        .stAudioInput {
+            margin-top: -15px;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
 # --- HELPER: AUDIO TRANSCRIPTION (STT) ---
 def transcribe_audio(audio_file):
     try:
@@ -108,6 +142,9 @@ def main():
         page_icon="🏨",
         layout="wide",
     )
+    
+    # Inject CSS for better UI
+    inject_custom_css()
 
     cfg = load_config()
     _init_app_state()
@@ -143,7 +180,6 @@ def run_chat_assistant(cfg):
             )
 
     # --- CHAT INTERFACE LAYOUT ---
-    # We use a fixed-height container for messages so the inputs stay at the bottom.
     chat_container = st.container(height=500)
 
     # Display chat history INSIDE the container
@@ -153,33 +189,44 @@ def run_chat_assistant(cfg):
             with st.chat_message(msg["role"], avatar=avatar):
                 st.write(msg["content"])
 
-    # --- INPUT AREA (Pinned near bottom) ---
+    # --- CONTROLS AREA (Pinned near bottom) ---
+    # We use columns to put the Toggle and Mic side-by-side
+    
     user_input = None
+    input_source = "text" # Default
     
-    # 1. Voice Response Toggle (Right above the mic)
-    # This places a simple switch near the input area
-    enable_voice_response = st.toggle("📣 Read responses aloud", value=False)
+    # Create two columns: Left for Mic, Right for Toggle (or vice versa)
+    c1, c2 = st.columns([3, 1])
     
-    # 2. Audio Input
-    audio_val = st.audio_input("🎤 Speak to the assistant")
+    with c1:
+        # 1. Audio Input (Larger column)
+        audio_val = st.audio_input("🎤 Speak")
+        
+    with c2:
+        # 2. Voice Response Toggle (Compact column)
+        st.write("") # Spacing to align with mic
+        st.write("") 
+        enable_voice_response = st.toggle("🔊 Read Aloud", value=False)
     
-    # 3. Text Input
+    # 3. Text Input (Always at very bottom)
     text_val = st.chat_input("How can I help you with your hotel stay today?")
 
+    # --- PROCESS INPUTS ---
     if audio_val:
         with st.spinner("Transcribing voice..."):
             transcribed_text = transcribe_audio(audio_val)
             if transcribed_text:
                 user_input = transcribed_text
+                input_source = "audio"
 
     if text_val:
         user_input = text_val
+        input_source = "text"
 
     if not user_input:
         return
 
     # --- UI FIX: Display User Message Immediately ---
-    # We write this into the container so it appears in history instantly
     with chat_container:
         with st.chat_message("user", avatar=USER_AVATAR):
             st.write(user_input)
@@ -198,7 +245,6 @@ def run_chat_assistant(cfg):
         "breakfast", "food", "restaurant", "location", "near"
     ]
     
-    # Check for Booking Status keywords
     check_booking_keywords = ["check booking", "status", "my booking", "booking details"]
     if any(kw in user_input.lower() for kw in check_booking_keywords):
         final_intent = "check_booking"
@@ -228,7 +274,6 @@ def run_chat_assistant(cfg):
             response_text = "I’m not sure I understood. Are you trying to make a booking, check a booking, or ask about hotel details?"
 
         # Display Response
-        # We write directly to the container and pass the toggle value
         store_message(st.session_state.messages, "assistant", response_text)
         with chat_container:
             with st.chat_message("assistant", avatar=BOT_AVATAR):
@@ -238,7 +283,6 @@ def run_chat_assistant(cfg):
 
 
 def handle_check_booking(user_input: str) -> str:
-    # Simple extraction of email-like patterns
     import re
     email_match = re.search(r'[\w\.-]+@[\w\.-]+', user_input)
     
@@ -336,9 +380,7 @@ def handle_faq_intent(user_message: str) -> str:
         return rag_tool(store, user_message)
 
 
-# Modified respond function is now handled inline within run_chat_assistant
-# to ensure it prints inside the chat_container.
-# We keep this for non-chat usage if any.
+# Modified respond function handled inline within run_chat_assistant
 def respond(text: str, enable_voice: bool = False):
     store_message(st.session_state.messages, "assistant", text)
     with st.chat_message("assistant", avatar=BOT_AVATAR):
