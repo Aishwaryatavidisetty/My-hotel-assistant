@@ -113,8 +113,8 @@ def _configure_gemini():
 def llm_extract_booking_fields(message: str, state: BookingState) -> Dict[str, Any]:
     _configure_gemini()
     
-    # Use gemini-1.5-flash
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # UPDATED MODEL NAME
+    model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
     missing = get_missing_fields(state)
     expected_field = missing[0] if missing else "none"
@@ -125,11 +125,9 @@ def llm_extract_booking_fields(message: str, state: BookingState) -> Dict[str, A
         f"CURRENT CONTEXT: The system is asking the user for: '{expected_field}'. "
         f"TODAY'S DATE: {today}. "
         "If the user provides a short answer (e.g. 'John' or 'tomorrow'), assume it refers to the requested field. "
-        "Return a valid JSON object (no markdown formatting) with keys: "
-        "customer_name, email, phone, booking_type, date, time. "
+        "Return a valid JSON object with keys: customer_name, email, phone, booking_type, date, time. "
         "Use date format YYYY-MM-DD and time HH:MM (24-hour). "
-        "If a field is missing, set it to null. "
-        "Do not include ```json ... ``` wrappers, just raw JSON."
+        "If a field is missing, set it to null. Return ONLY raw JSON."
     )
 
     prompt = f"{system_prompt}\n\nUser Message: {message}"
@@ -138,17 +136,12 @@ def llm_extract_booking_fields(message: str, state: BookingState) -> Dict[str, A
         response = model.generate_content(prompt)
         content = response.text
         
-        # Clean up code blocks
         content = content.replace("```json", "").replace("```", "").strip()
-        
-        # If model returns empty, return empty dict
         if not content:
             return {}
-
         return json.loads(content)
 
     except Exception as e:
-        # --- DEBUG: Show error in UI so we know WHY it failed ---
         st.error(f"Extraction Error: {str(e)}")
         return {}
 
