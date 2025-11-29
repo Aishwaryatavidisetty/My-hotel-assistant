@@ -19,7 +19,7 @@ from config import load_config
 from chat_logic import detect_intent, store_message
 from rag_pipeline import RAGStore, RAGConfig, build_rag_store_from_uploads
 from rag_pipeline import rag_tool 
-from tools import booking_persistence_tool, email_tool, find_booking_by_email # Added find_booking
+from tools import booking_persistence_tool, email_tool, find_booking_by_email
 from admin_dashboard import render_admin_dashboard
 
 from booking_flow import (
@@ -47,10 +47,6 @@ def _init_app_state():
 # --- HELPER: AUDIO TRANSCRIPTION (STT) ---
 def transcribe_audio(audio_file):
     try:
-        # We can use Gemini to listen to the audio!
-        # Or simpler: if you have an STT library. 
-        # Using Gemini 1.5 Flash which supports audio input is very clean.
-        
         # Configure genai (ensure key is loaded)
         if "google" in st.secrets:
             api_key = st.secrets["google"]["api_key"]
@@ -60,19 +56,37 @@ def transcribe_audio(audio_file):
             api_key = st.secrets.get("google_api_key", "")
         genai.configure(api_key=api_key)
         
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        
         # Read file bytes
         audio_bytes = audio_file.read()
+
+        # --- UPDATED FALLBACK STRATEGY FOR AUDIO ---
+        models_to_try = [
+            'gemini-2.0-flash', 
+            'gemini-2.0-flash-lite',
+            'gemini-1.5-flash',
+            'gemini-flash-latest'
+        ]
         
-        # Gemini expects parts. We can send data directly.
-        response = model.generate_content([
-            "Transcribe this audio exactly as it is spoken.",
-            {"mime_type": "audio/wav", "data": audio_bytes}
-        ])
-        return response.text.strip()
+        last_error = None
+        for model_name in models_to_try:
+            try:
+                model = genai.GenerativeModel(model_name)
+                # Gemini expects parts. We can send data directly.
+                response = model.generate_content([
+                    "Transcribe this audio exactly as it is spoken.",
+                    {"mime_type": "audio/wav", "data": audio_bytes}
+                ])
+                return response.text.strip()
+            except Exception as e:
+                last_error = e
+                continue
+        
+        # If loop finishes without returning
+        st.error(f"Audio transcription failed on all models. Last error: {last_error}")
+        return None
+
     except Exception as e:
-        st.error(f"Audio transcription failed: {e}")
+        st.error(f"Audio transcription critical error: {e}")
         return None
 
 # --- HELPER: TEXT TO SPEECH (TTS) ---
