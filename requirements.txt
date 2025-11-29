@@ -21,3 +21,4 @@ email-validator
 sentence-transformers
 gTTS
 pandas
+plotly
