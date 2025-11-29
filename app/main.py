@@ -88,29 +88,45 @@ def run_chat_assistant(cfg):
     if not user_input:
         return
 
+    # --- UI FIX: Display User Message Immediately ---
+    # This fixes the "late" appearance of the user prompt
+    with st.chat_message("user"):
+        st.write(user_input)
+    
     store_message(st.session_state.messages, "user", user_input)
 
     # --- INTELLIGENT ROUTING LOGIC ---
     
-    # 1. Always detect intent first to allow for questions/interruptions
     detected_intent = detect_intent(user_input)
     final_intent = detected_intent
+    
+    # Keyword list to force RAG if the intent detector misses it
+    rag_keywords = [
+        "price", "cost", "how much", "rate", 
+        "wifi", "internet", "pool", "gym", "spa", "parking",
+        "check-in", "check-out", "policy", "refund", "cancel",
+        "breakfast", "food", "restaurant", "location", "near"
+    ]
 
-    # 2. Check context: Are we in an active booking?
+    # Check context: Are we in an active booking?
     if st.session_state.booking_state.active:
-        # If the user asks a clear FAQ question, let them ask it!
-        if detected_intent == "faq_rag":
+        # 1. Check for manual keyword overrides (Stronger than intent detector)
+        if any(kw in user_input.lower() for kw in rag_keywords):
             final_intent = "faq_rag"
-        # If the user tries to cancel, let them
+            
+        # 2. If the detected intent says FAQ, trust it
+        elif detected_intent == "faq_rag":
+            final_intent = "faq_rag"
+            
+        # 3. Check for cancellation
         elif "cancel" in user_input.lower():
-            final_intent = "booking" # Let booking handler process the cancel
-        # If the intent is unclear (e.g., user just typed "John"), 
-        # assume it's the answer to the booking question.
+            final_intent = "booking" 
+            
+        # 4. If unclear (e.g., "John", "Deluxe"), assume it's booking data
         elif detected_intent == "unknown" or detected_intent == "small_talk":
              final_intent = "booking"
-        # Otherwise, stick with what was detected (e.g. they might have explicitly said "I want to book")
 
-    # 3. Dispatch
+    # Dispatch
     if final_intent == "booking":
         handle_booking_intent(cfg, user_input)
     elif final_intent == "faq_rag":
@@ -118,7 +134,6 @@ def run_chat_assistant(cfg):
     elif final_intent == "small_talk":
         respond("Hello! I can help you book rooms or answer questions about the hotel.")
     else:
-        # Fallback for completely unknown inputs when NOT in booking mode
         respond(
             "I’m not sure I understood. "
             "Are you trying to make a hotel booking or asking about hotel details?"
