@@ -118,9 +118,20 @@ def llm_extract_booking_fields(message: str, state: BookingState) -> Dict[str, A
     expected_field = missing[0] if missing else "none"
     today = date.today().isoformat()
 
+    # --- DYNAMIC CONTEXT ---
+    # If we are waiting for confirmation, tell the LLM to listen for CORRECTIONS.
+    if state.awaiting_confirmation:
+        context_str = (
+            f"CURRENT CONTEXT: The user is reviewing their booking details. "
+            f"They might say 'confirm', or they might provide a CORRECTION (e.g., 'Change name to X', 'Wrong date'). "
+            f"If they provide a correction, extract the new value."
+        )
+    else:
+        context_str = f"CURRENT CONTEXT: The system is asking the user for: '{expected_field}'."
+
     system_prompt = (
         "You extract booking fields from user text. "
-        f"CURRENT CONTEXT: The system is asking the user for: '{expected_field}'. "
+        f"{context_str} "
         f"TODAY'S DATE: {today}. "
         "If the user provides a short answer (e.g. 'John' or 'tomorrow'), assume it refers to the requested field. "
         "Return a valid JSON object (no markdown formatting) with keys: "
@@ -179,7 +190,7 @@ def update_state_from_message(message: str, state: BookingState) -> BookingState
     if extracted.get("customer_name"):
         name = extracted["customer_name"].strip()
         if len(name) < 2:
-             state.errors["customer_name"] = "Invalid name. Please provide your full name."
+             state.errors["customer_name"] = "Name looks too short. Please provide your full name."
         else:
             state.customer_name = name
 
@@ -230,8 +241,7 @@ def update_state_from_message(message: str, state: BookingState) -> BookingState
         else:
             state.errors["date"] = "Invalid date format. Please use YYYY-MM-DD."
     elif target_field == "date":
-        # If we asked for date but got nothing valid (maybe user typed digits that looked like a phone)
-        # We explicitly set this error so it takes priority
+        # Only error if we specifically asked for date and got junk
         state.errors["date"] = "Invalid date. Please enter format YYYY-MM-DD."
 
     # --- Time Validation ---
@@ -245,11 +255,8 @@ def update_state_from_message(message: str, state: BookingState) -> BookingState
         state.errors["time"] = "Invalid time. Please use 24-hour format (e.g., 14:00)."
 
     # --- CRITICAL FIX: REORDER ERRORS ---
-    # If the user made a mistake on the SPECIFIC field we asked for, show that error first.
-    # This prevents "Invalid phone number" appearing when we actually asked for "Date".
     if target_field and target_field in state.errors:
         priority_error = {target_field: state.errors[target_field]}
-        # Add remaining errors after the priority one
         for k, v in state.errors.items():
             if k != target_field:
                 priority_error[k] = v

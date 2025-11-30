@@ -144,14 +144,14 @@ def main():
         page_title="AI Hotel Booking Assistant",
         page_icon="🏨",
         layout="wide",
-        initial_sidebar_state="expanded" 
+        initial_sidebar_state="expanded" # Restored Sidebar
     )
     
     inject_custom_css()
     cfg = load_config()
     _init_app_state()
 
-    # --- SIDEBAR NAVIGATION ---
+    # --- SIDEBAR NAVIGATION (Restored) ---
     with st.sidebar:
         st.title("Navigation")
         menu = st.radio("Go to", ["Chat Assistant", "Admin Dashboard"])
@@ -186,6 +186,7 @@ def run_chat_assistant(cfg):
             st.success(f"Indexed {len(chunks)} chunks.")
 
     # --- CHAT AREA ---
+    # Container to keep messages scrollable
     chat_container = st.container(height=500)
 
     with chat_container:
@@ -193,6 +194,7 @@ def run_chat_assistant(cfg):
             st.info("👋 Hi! Ask me about room prices, amenities, or say 'I want to book a room'.")
             
         for msg in st.session_state.messages:
+            # Reverted to standard visible avatars
             with st.chat_message(msg["role"], avatar=BOT_AVATAR if msg["role"]=="assistant" else USER_AVATAR):
                 st.write(msg["content"])
 
@@ -232,7 +234,6 @@ def run_chat_assistant(cfg):
     detected_intent = detect_intent(user_input)
     final_intent = detected_intent
     
-    # Expanded Keyword List for Hotel Services
     rag_keywords = [
         "price", "cost", "rate", "wifi", "pool", "gym", "spa", "parking",
         "check-in", "check-out", "policy", "refund", "cancel",
@@ -243,15 +244,10 @@ def run_chat_assistant(cfg):
     check_booking_keywords = ["check booking", "status", "my booking"]
     start_booking_keywords = ["book", "yes", "sure", "yep", "confirm", "reservation", "need"]
     
-    # 1. Check Booking Status
     if any(kw in user_input.lower() for kw in check_booking_keywords):
         final_intent = "check_booking"
-        
-    # 2. Check General Questions (RAG) - Priority over booking for questions
     elif any(kw in user_input.lower() for kw in rag_keywords) or "?" in user_input:
         final_intent = "faq_rag"
-        
-    # 3. Check Booking Flow
     elif st.session_state.booking_state.active:
         if "cancel" in user_input.lower():
             final_intent = "booking"
@@ -259,8 +255,6 @@ def run_chat_assistant(cfg):
              final_intent = "faq_rag"
         else:
             final_intent = "booking"
-            
-    # 4. Check New Booking Intent
     elif any(kw in user_input.lower() for kw in start_booking_keywords):
         final_intent = "booking"
 
@@ -274,7 +268,6 @@ def run_chat_assistant(cfg):
     elif final_intent == "small_talk":
         response_text = "Hello! I can help you with room bookings or hotel information."
     else:
-        # Fallback for ambiguous inputs that look like questions
         if "?" in user_input:
              response_text = handle_faq_intent(user_input)
         else:
@@ -321,6 +314,7 @@ def handle_booking_intent(cfg, user_message: str) -> str:
         return "🚫 Booking cancelled."
 
     if state.awaiting_confirmation:
+        # 1. CHECK CONFIRMATION
         if "confirm" in lower_msg or lower_msg in ("yes", "yes, confirm"):
             payload = state.to_payload()
             result = booking_persistence_tool(cfg, payload)
@@ -347,8 +341,12 @@ def handle_booking_intent(cfg, user_message: str) -> str:
             st.session_state.booking_state = BookingState()
             return msg
 
-        return "Please type **'confirm'** to finish."
+        # 2. ALLOW CORRECTIONS (Fallthrough)
+        # If user says anything other than "confirm" or "cancel",
+        # we assume it's a correction update. We do NOT return here.
+        pass 
 
+    # --- PROCESS UPDATES (Normal flow or Correction flow) ---
     state = update_state_from_message(user_message, state)
     st.session_state.booking_state = state
 
@@ -371,7 +369,7 @@ def handle_booking_intent(cfg, user_message: str) -> str:
 def handle_faq_intent(user_message: str) -> str:
     store: RAGStore = st.session_state.rag_store
     if store is None or store.size == 0:
-        return "I can't answer that yet. Please upload hotel documents in the sidebar first."
+        return "I can't answer that yet. Please upload hotel documents first."
     else:
         return rag_tool(store, user_message)
 
