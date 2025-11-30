@@ -168,20 +168,14 @@ def llm_extract_booking_fields(message: str, state: BookingState) -> Dict[str, A
 def update_state_from_message(message: str, state: BookingState) -> BookingState:
     state.active = True
     
-    # 1. Check what we were looking for BEFORE extracting
-    missing_before = get_missing_fields(state)
-    target_field = missing_before[0] if missing_before else None
-
-    # 2. Extract
+    # Extract
     extracted = llm_extract_booking_fields(message, state)
     state.errors.clear()
 
     # --- Name ---
     if extracted.get("customer_name"):
         state.customer_name = extracted["customer_name"].strip()
-    elif target_field == "customer_name":
-        # If we asked for a name but didn't get one
-        state.errors["customer_name"] = "I didn't catch a name. Could you please provide your full name?"
+    # REMOVED: Aggressive fallback error. If extraction fails, we just ask again politely.
 
     # --- Email ---
     if extracted.get("email"):
@@ -190,20 +184,14 @@ def update_state_from_message(message: str, state: BookingState) -> BookingState
             state.email = email
         else:
             state.errors["email"] = "That email looks invalid. Please try format: name@example.com"
-    elif target_field == "email":
-        state.errors["email"] = "Please provide a valid email address."
 
     # --- Phone ---
     if extracted.get("phone"):
         state.phone = extracted["phone"].strip()
-    elif target_field == "phone":
-        state.errors["phone"] = "Please enter your phone number."
 
     # --- Booking Type ---
     if extracted.get("booking_type"):
         state.booking_type = extracted["booking_type"].strip()
-    elif target_field == "booking_type":
-        state.errors["booking_type"] = "Please specify a room type (e.g., Deluxe, Single, Suite)."
 
     # --- Date ---
     if extracted.get("date"):
@@ -212,8 +200,6 @@ def update_state_from_message(message: str, state: BookingState) -> BookingState
             state.date = parsed
         else:
             state.errors["date"] = "Invalid date format. Please use YYYY-MM-DD."
-    elif target_field == "date":
-        state.errors["date"] = "I couldn't understand that date. Please try YYYY-MM-DD (e.g., 2025-12-01)."
 
     # --- Time ---
     if extracted.get("time"):
@@ -222,8 +208,6 @@ def update_state_from_message(message: str, state: BookingState) -> BookingState
             state.time = parsed
         else:
             state.errors["time"] = "Invalid time format. Please use HH:MM."
-    elif target_field == "time":
-        state.errors["time"] = "I couldn't understand that time. Please use 24-hour format (e.g., 14:00)."
 
     return state
 
@@ -234,7 +218,7 @@ def next_question_for_missing_field(field_name: str) -> str:
     prompts = {
         "customer_name": "May I know the guest name?",
         "email": "What's your email address for confirmation?",
-        "phone": "Your phone number? ",
+        "phone": "Your phone number? (optional)",
         "booking_type": "What type of room would you like to book?",
         "date": "What check-in date? Please use YYYY-MM-DD.",
         "time": "What arrival time? Please use HH:MM (24-hour).",
