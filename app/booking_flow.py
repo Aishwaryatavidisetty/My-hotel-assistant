@@ -214,7 +214,7 @@ def update_state_from_message(message: str, state: BookingState) -> BookingState
             state.phone = None
         else:
             digits = re.sub(r'\D', '', val)
-            if len(digits) < 10 or len(digits) > 15:
+            if len(digits) < 10 or len(digits) > 10:
                  state.errors["phone"] = "Invalid phone number. Please enter a valid mobile number."
             else:
                 state.phone = val
