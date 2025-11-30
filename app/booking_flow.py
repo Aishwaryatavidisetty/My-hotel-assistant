@@ -162,7 +162,7 @@ def llm_extract_booking_fields(message: str, state: BookingState) -> Dict[str, A
         return {}
 
 
-# ----------------- STATE UPDATE (IMPROVED VALIDATION) ------------------------
+# ----------------- STATE UPDATE (PRIORITIZED ERROR HANDLING) ------------------------
 
 def update_state_from_message(message: str, state: BookingState) -> BookingState:
     state.active = True
@@ -175,71 +175,85 @@ def update_state_from_message(message: str, state: BookingState) -> BookingState
     extracted = llm_extract_booking_fields(message, state)
     state.errors.clear()
 
-    # --- Name ---
+    # --- Name Validation ---
     if extracted.get("customer_name"):
         name = extracted["customer_name"].strip()
         if len(name) < 2:
-             state.errors["customer_name"] = "Name looks too short. Please provide your full name."
+             state.errors["customer_name"] = "Invalid name. Please provide your full name."
         else:
             state.customer_name = name
-    # Removed fallback "didn't catch name" to prevent warnings on start
 
-    # --- Email ---
+    # --- Email Validation ---
     if extracted.get("email"):
         email = extracted["email"].strip()
         if validate_email(email):
             state.email = email
         else:
-            state.errors["email"] = "That email looks invalid. Please try format: name@example.com"
+            state.errors["email"] = "Invalid email. Please try format: name@example.com"
 
-    # --- Phone (Validation Update) ---
+    # --- Phone Validation ---
     if extracted.get("phone"):
         phone = extracted["phone"].strip()
-        # Strictly numeric check for length (e.g. 10-15 digits standard for international/local)
         digits = re.sub(r'\D', '', phone)
+        # Check standard length (10-15 digits)
         if len(digits) < 10 or len(digits) > 15:
-             state.errors["phone"] = "Invalid phone number. Please enter a valid 10-digit mobile number."
+             state.errors["phone"] = "Invalid phone number. Please enter a valid mobile number."
         else:
             state.phone = phone
 
-    # --- Booking Type (Room Info Update) ---
+    # --- Booking Type Validation ---
     if extracted.get("booking_type"):
         b_type = extracted["booking_type"].strip()
         if len(b_type) < 2:
-             state.errors["booking_type"] = "Please specify a valid room type."
+             state.errors["booking_type"] = "Invalid room type. Please specify Standard, Deluxe, or Suite."
         else:
             state.booking_type = b_type
     elif target_field == "booking_type":
-        # Check if user is asking for options instead of answering
         msg_lower = message.lower()
         if any(w in msg_lower for w in ["option", "type", "available", "what", "which"]):
-            # Provide info directly via error message channel so it displays immediately
             state.errors["booking_type"] = (
                 "We have the following rooms available:\n\n"
-                "- **Standard Room** ($100/night)\n"
-                "- **Deluxe Room** ($180/night)\n"
-                "- **Executive Suite** ($350/night)\n\n"
+                "- **Standard Room**\n"
+                "- **Deluxe Room**\n"
+                "- **Executive Suite**\n\n"
                 "Which one would you like to book?"
             )
 
-    # --- Date ---
+    # --- Date Validation ---
     if extracted.get("date"):
         parsed = parse_date_str(extracted["date"])
         if parsed:
             if parsed < date.today():
-                state.errors["date"] = "That date is in the past. Please choose an upcoming date (YYYY-MM-DD)."
+                state.errors["date"] = "Invalid date (past). Please choose an upcoming date (YYYY-MM-DD)."
             else:
                 state.date = parsed
         else:
             state.errors["date"] = "Invalid date format. Please use YYYY-MM-DD."
+    elif target_field == "date":
+        # If we asked for date but got nothing valid (maybe user typed digits that looked like a phone)
+        # We explicitly set this error so it takes priority
+        state.errors["date"] = "Invalid date. Please enter format YYYY-MM-DD."
 
-    # --- Time ---
+    # --- Time Validation ---
     if extracted.get("time"):
         parsed = parse_time_str(extracted["time"])
         if parsed:
             state.time = parsed
         else:
             state.errors["time"] = "Invalid time format. Please use HH:MM."
+    elif target_field == "time":
+        state.errors["time"] = "Invalid time. Please use 24-hour format (e.g., 14:00)."
+
+    # --- CRITICAL FIX: REORDER ERRORS ---
+    # If the user made a mistake on the SPECIFIC field we asked for, show that error first.
+    # This prevents "Invalid phone number" appearing when we actually asked for "Date".
+    if target_field and target_field in state.errors:
+        priority_error = {target_field: state.errors[target_field]}
+        # Add remaining errors after the priority one
+        for k, v in state.errors.items():
+            if k != target_field:
+                priority_error[k] = v
+        state.errors = priority_error
 
     return state
 
