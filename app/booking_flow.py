@@ -85,13 +85,14 @@ def get_missing_fields(state: BookingState) -> List[str]:
 
 
 def generate_confirmation_text(state: BookingState) -> str:
+    # UPDATED: Use Markdown bullet points to force new lines
     return (
-        f"Name: {state.customer_name}\n"
-        f"Email: {state.email}\n"
-        f"Phone: {state.phone or 'N/A'}\n"
-        f"Room Type: {state.booking_type}\n"
-        f"Date: {state.date}\n"
-        f"Time: {state.time}\n"
+        f"- **Name:** {state.customer_name}\n"
+        f"- **Email:** {state.email}\n"
+        f"- **Phone:** {state.phone or 'N/A'}\n"
+        f"- **Room Type:** {state.booking_type}\n"
+        f"- **Date:** {state.date}\n"
+        f"- **Time:** {state.time}"
     )
 
 
@@ -152,14 +153,12 @@ def llm_extract_booking_fields(message: str, state: BookingState) -> Dict[str, A
             continue
     
     if not content:
-        # st.error(f"Extraction failed. Error: {last_error}")
         return {}
 
     try:
         content = content.replace("```json", "").replace("```", "").strip()
         return json.loads(content)
     except Exception as e:
-        # st.error(f"JSON Parse Error: {str(e)}")
         return {}
 
 
@@ -174,8 +173,11 @@ def update_state_from_message(message: str, state: BookingState) -> BookingState
 
     # --- Name ---
     if extracted.get("customer_name"):
-        state.customer_name = extracted["customer_name"].strip()
-    # REMOVED: Aggressive fallback error. If extraction fails, we just ask again politely.
+        name = extracted["customer_name"].strip()
+        if len(name) < 2:
+             state.errors["customer_name"] = "Name looks too short. Please provide your full name."
+        else:
+            state.customer_name = name
 
     # --- Email ---
     if extracted.get("email"):
@@ -187,17 +189,29 @@ def update_state_from_message(message: str, state: BookingState) -> BookingState
 
     # --- Phone ---
     if extracted.get("phone"):
-        state.phone = extracted["phone"].strip()
+        phone = extracted["phone"].strip()
+        # Basic check: at least 7 digits for a valid number
+        if len(re.sub(r'\D', '', phone)) < 7:
+             state.errors["phone"] = "That phone number doesn't look right. Please enter a valid number."
+        else:
+            state.phone = phone
 
     # --- Booking Type ---
     if extracted.get("booking_type"):
-        state.booking_type = extracted["booking_type"].strip()
+        b_type = extracted["booking_type"].strip()
+        if len(b_type) < 2:
+             state.errors["booking_type"] = "Please specify a valid room type."
+        else:
+            state.booking_type = b_type
 
     # --- Date ---
     if extracted.get("date"):
         parsed = parse_date_str(extracted["date"])
         if parsed:
-            state.date = parsed
+            if parsed < date.today():
+                state.errors["date"] = "That date is in the past. Please choose an upcoming date (YYYY-MM-DD)."
+            else:
+                state.date = parsed
         else:
             state.errors["date"] = "Invalid date format. Please use YYYY-MM-DD."
 
