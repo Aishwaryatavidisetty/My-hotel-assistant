@@ -4,11 +4,11 @@ A sophisticated AI-powered chatbot for hotel bookings and guest services. This a
 
 ✨ Features
 
-Smart Booking Flow: Conversational booking process that collects Name, Email, Phone, Room Type, Date, and Time.
+- Smart Booking Flow: Conversational booking process that collects Name, Email, Phone, Room Type, Date, and Time.
 
-RAG (Retrieval-Augmented Generation): Upload hotel policy PDFs to let the bot answer specific questions about services, rules, and amenities.
+- RAG (Retrieval-Augmented Generation): Upload hotel policy PDFs to let the bot answer specific questions about services, rules, and amenities.
 
-Voice Interaction: Speak to the assistant and hear responses read aloud (Speech-to-Text & Text-to-Speech).
+- Voice Interaction: Speak to the assistant and hear responses read aloud (Speech-to-Text & Text-to-Speech).
 
 Database Integration: Stores all bookings and customer details in Supabase.
 
