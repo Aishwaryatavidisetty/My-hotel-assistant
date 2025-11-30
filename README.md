@@ -37,6 +37,7 @@ A sophisticated AI-powered chatbot for hotel bookings and guest services. This a
 1. Clone the Repository
 
 git clone https://github.com/Aishwaryatavidisetty/My-hotel-assistant
+
 cd My-hotel-assistant
 
 
@@ -65,14 +66,20 @@ api_key = "YOUR_GEMINI_API_KEY"
 
 [supabase]
 url = "YOUR_SUPABASE_URL"
+
 service_key = "YOUR_SUPABASE_SERVICE_ROLE_KEY"
 
 [email]
 smtp_host = "smtp.gmail.com"
+
 smtp_port = 587
+
 smtp_user = "your-email@gmail.com"
+
 smtp_password = "your-app-password"  # Generate this in Google Account > Security
+
 from_email = "your-email@gmail.com"
+
 from_name = "AI Hotel Booking Assistant"
 
 
