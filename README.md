@@ -62,14 +62,17 @@ Create a .streamlit/secrets.toml file in the root directory:
 #### .streamlit/secrets.toml
 
 [google]
+
 api_key = "YOUR_GEMINI_API_KEY"
 
 [supabase]
+
 url = "YOUR_SUPABASE_URL"
 
 service_key = "YOUR_SUPABASE_SERVICE_ROLE_KEY"
 
 [email]
+
 smtp_host = "smtp.gmail.com"
 
 smtp_port = 587
