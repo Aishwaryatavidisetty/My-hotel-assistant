@@ -10,27 +10,27 @@ A sophisticated AI-powered chatbot for hotel bookings and guest services. This a
 
 - Voice Interaction: Speak to the assistant and hear responses read aloud (Speech-to-Text & Text-to-Speech).
 
-Database Integration: Stores all bookings and customer details in Supabase.
+- Database Integration: Stores all bookings and customer details in Supabase.
 
-Email Confirmation: Sends an automated confirmation email upon successful booking.
+- Email Confirmation: Sends an automated confirmation email upon successful booking.
 
-Admin Dashboard: View, filter, and export booking data (CSV).
+- Admin Dashboard: View, filter, and export booking data (CSV).
 
-Error Handling: Validates inputs (dates, emails, phone numbers) and handles API errors gracefully.
+- Error Handling: Validates inputs (dates, emails, phone numbers) and handles API errors gracefully.
 
 🛠️ Tech Stack
 
-Frontend: Streamlit
+- Frontend: Streamlit
 
-LLM & Embeddings: Google Gemini (via google-generativeai)
+- LLM & Embeddings: Google Gemini (via google-generativeai)
 
-Database: Supabase (PostgreSQL)
+- Database: Supabase (PostgreSQL)
 
-Vector Store: FAISS (Local CPU version)
+- Vector Store: FAISS (Local CPU version)
 
-Audio: gTTS (Google Text-to-Speech)
+- Audio: gTTS (Google Text-to-Speech)
 
-Language: Python 3.9+
+- Language: Python 3.9+
 
 🚀 Setup & Installation for deploying locally:
 
@@ -43,9 +43,9 @@ cd My-hotel-assistant
 2. Create a Virtual Environment
 
 python -m venv venv
-# Windows:
+#### Windows:
 venv\Scripts\activate
-# Mac/Linux:
+#### Mac/Linux:
 source venv/bin/activate
 
 
@@ -58,7 +58,7 @@ pip install -r requirements.txt
 
 Create a .streamlit/secrets.toml file in the root directory:
 
-# .streamlit/secrets.toml
+#### .streamlit/secrets.toml
 
 [google]
 api_key = "YOUR_GEMINI_API_KEY"
@@ -79,23 +79,6 @@ from_name = "AI Hotel Booking Assistant"
 5. Run the Application
 
 streamlit run app/main.py
-
-
-📂 Project Structure
-
-.
-├── app/
-│   ├── main.py                 # Main application entry point & UI
-│   ├── booking_flow.py         # Logic for conversation state & validation
-│   ├── rag_pipeline.py         # RAG logic (PDF parsing, embedding, retrieval)
-│   ├── tools.py                # Database & Email tools
-│   ├── chat_logic.py           # Intent detection & message handling
-│   ├── config.py               # Configuration loader
-│   └── admin_dashboard.py      # Admin panel for viewing bookings
-├── db/
-│   └── database.py             # Supabase client initialization
-├── requirements.txt            # Project dependencies
-└── README.md                   # Project documentation
 
 
 🛡️ Database Schema (Supabase)
@@ -128,19 +111,19 @@ alter table public.bookings disable row level security;
 
 Chat Assistant:
 
-Type or speak to start booking.
+- Type or speak to start booking.
 
-Ask questions like "What is the price of a deluxe room?" (requires PDF upload).
+- Ask questions like "What is the price of a deluxe room?" (requires PDF upload).
 
-Use natural language to correct details: "I want to change the date"
+- Use natural language to correct details: "I want to change the date"
 
 Admin Dashboard:
 
-Navigate via the sidebar.
+- Navigate via the sidebar.
 
-View all bookings, filter by status, cancel bookings, or download CSV reports.
+- View all bookings, filter by status, cancel bookings, or download CSV reports.
 
-Streamlit Deployement link
+🤖 Streamlit Deployement link
 
 https://my-hotel-assistant-upwybbnfxrc4hzqgqozfwf.streamlit.app/
 
