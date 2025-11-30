@@ -291,7 +291,7 @@ def next_question_for_missing_field(field_name: str) -> str:
     prompts = {
         "customer_name": "May I know the guest name?",
         "email": "What's your email address for confirmation?",
-        "phone": "Your phone number? (optional)",
+        "phone": "Your phone number? ",
         "booking_type": "What type of room would you like to book? (Standard, Deluxe, Suite)",
         "date": "What check-in date? Please use YYYY-MM-DD.",
         "time": "What arrival time? Please use HH:MM (24-hour).",
