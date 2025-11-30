@@ -234,36 +234,44 @@ def run_chat_assistant(cfg):
     detected_intent = detect_intent(user_input)
     final_intent = detected_intent
     
+    # Removed generic words like "room" to prevent booking confusion
     rag_keywords = [
         "price", "cost", "rate", "wifi", "pool", "gym", "spa", "parking",
-        "check-in", "check-out", "policy", "refund", "cancel",
+        "check-in", "check-out", "policy", "refund", 
         "breakfast", "food", "restaurant", "location", "near", 
-        "service", "amenit", "offer", "facility", "facilities", "room", "bed", "type"
+        "service", "amenit", "offer", "facility", "facilities", "type"
     ]
     
     check_booking_keywords = ["check booking", "status", "my booking"]
+    # Strong keywords to trigger booking immediately
     start_booking_keywords = ["book", "yes", "sure", "yep", "confirm", "reservation", "need"]
     
-    # 1. Check Booking Status
-    if any(kw in user_input.lower() for kw in check_booking_keywords):
-        final_intent = "check_booking"
-        
-    # 2. Check General Questions (RAG)
-    elif any(kw in user_input.lower() for kw in rag_keywords) or "?" in user_input:
-        final_intent = "faq_rag"
-        
-    # 3. Check Booking Flow
+    lower_input = user_input.lower()
+
+    # 1. Check for Cancellation (Priority)
+    if "cancel" in lower_input:
+        final_intent = "booking"
+
+    # 2. Check for Active Booking
     elif st.session_state.booking_state.active:
-        if "cancel" in user_input.lower():
-            final_intent = "booking"
-        elif detected_intent == "faq_rag": 
+        # If user asks a specific question (e.g. "What is the price?") let RAG answer
+        # But ensure it's not a booking answer (like "deluxe room")
+        if any(kw in lower_input for kw in rag_keywords) or "?" in user_input:
              final_intent = "faq_rag"
         else:
-            final_intent = "booking"
-            
-    # 4. Check New Booking Intent
-    elif any(kw in user_input.lower() for kw in start_booking_keywords):
+             final_intent = "booking"
+
+    # 3. Check for New Booking Intent (Priority over RAG)
+    elif any(kw in lower_input for kw in start_booking_keywords) or detected_intent == "booking":
         final_intent = "booking"
+
+    # 4. Check for Booking Status
+    elif any(kw in lower_input for kw in check_booking_keywords):
+        final_intent = "check_booking"
+        
+    # 5. Fallback to RAG for questions
+    elif any(kw in lower_input for kw in rag_keywords) or "?" in user_input:
+        final_intent = "faq_rag"
 
     # Generate Answer
     if final_intent == "booking":
@@ -275,8 +283,7 @@ def run_chat_assistant(cfg):
     elif final_intent == "small_talk":
         response_text = "Hello! I can help you with room bookings or hotel information."
     else:
-        # Fallback for ambiguous inputs
-        lower_input = user_input.lower()
+        # Final Fallback Logic
         if "?" in user_input:
              response_text = handle_faq_intent(user_input)
         elif "thank" in lower_input:
@@ -369,7 +376,7 @@ def handle_booking_intent(cfg, user_message: str) -> str:
     missing = get_missing_fields(state)
 
     if missing:
-        # --- NEW: WELCOME LOGIC ---
+        # --- WELCOME LOGIC ---
         question = next_question_for_missing_field(missing[0])
         gratitude_words = ["thank", "thanks", "thx", "appreciate"]
         if any(w in lower_msg for w in gratitude_words):
