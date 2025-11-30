@@ -186,6 +186,7 @@ def run_chat_assistant(cfg):
             st.success(f"Indexed {len(chunks)} chunks.")
 
     # --- CHAT AREA ---
+    # Container to keep messages scrollable
     chat_container = st.container(height=500)
 
     with chat_container:
@@ -273,10 +274,14 @@ def run_chat_assistant(cfg):
     elif final_intent == "small_talk":
         response_text = "Hello! I can help you with room bookings or hotel information."
     else:
+        # Fallback for ambiguous inputs
+        lower_input = user_input.lower()
         if "?" in user_input:
              response_text = handle_faq_intent(user_input)
-        elif "thank" in user_input.lower():
+        elif "thank" in lower_input:
              response_text = "You're welcome! Let me know if you need anything else."
+        elif any(w in lower_input.split() for w in ["okay", "ok", "alright", "sure", "cool"]):
+             response_text = "Great! Let me know if there's anything else I can help you with."
         else:
              response_text = "I'm not sure I understood. Would you like to make a booking?"
 
@@ -364,7 +369,6 @@ def handle_booking_intent(cfg, user_message: str) -> str:
 
     if missing:
         # --- NEW: WELCOME LOGIC ---
-        # If user said "Thanks" or "Thank you" while filling details
         question = next_question_for_missing_field(missing[0])
         gratitude_words = ["thank", "thanks", "thx", "appreciate"]
         if any(w in lower_msg for w in gratitude_words):
