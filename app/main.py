@@ -346,7 +346,7 @@ def handle_booking_intent(cfg, user_message: str) -> str:
 
             booking_id = result["booking_id"]
             email_body = (
-                f"Booking is confirmed!\n\n"
+                f"Your booking is confirmed ! 🎉\n\n"
                 f"Booking ID: {booking_id}\n\n"
                 f"{generate_confirmation_text(state)}"
             )
