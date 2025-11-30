@@ -172,10 +172,17 @@ def embed_query(text: str, cfg: RAGConfig | None = None) -> np.ndarray:
 
 # ---------------- RAG TOOL (GENERATION) ----------------
 
-def rag_tool(store: RAGStore, question: str) -> str:
+def rag_tool(store: RAGStore, question: str, chat_history: List[Dict] = []) -> str:
+    """
+    Retrieves context from the store and generates an answer using Gemini.
+    Incorporates chat history for context awareness.
+    """
     _configure_gemini()
 
+    # 1. Embed the user's question
     query_emb = embed_query(question)
+    
+    # 2. Search for relevant chunks (Top 4)
     results = store.similarity_search(query_emb, k=4)
     
     if not results:
@@ -183,15 +190,33 @@ def rag_tool(store: RAGStore, question: str) -> str:
     
     context_text = "\n\n---\n\n".join([doc["content"] for doc in results])
     
+    # --- MEMORY INTEGRATION ---
+    # Convert list of dicts to a string conversation log
+    # Limit to last 15 messages to keep prompt focused
+    recent_history = chat_history[-15:]
+    history_str = ""
+    for msg in recent_history:
+        role = "User" if msg["role"] == "user" else "Assistant"
+        # Skip the very last message if it's the current question (to avoid duplication)
+        if msg["content"] == question and msg["role"] == "user":
+            continue
+        history_str += f"{role}: {msg['content']}\n"
+
     system_prompt = (
         "You are a helpful hotel booking assistant. "
         "Use the provided context to answer the user's question accurately. "
-        "If the answer is not in the context, say you don't know."
+        "If the answer is not in the context, say you don't know. "
+        "Refer to the Conversation History to understand context (e.g., 'it', 'that', 'the price')."
     )
     
-    user_prompt = f"{system_prompt}\n\nContext:\n{context_text}\n\nQuestion: {question}"
+    user_prompt = (
+        f"{system_prompt}\n\n"
+        f"--- CONVERSATION HISTORY ---\n{history_str}\n"
+        f"--- DOCUMENT CONTEXT ---\n{context_text}\n\n"
+        f"--- CURRENT QUESTION ---\n{question}"
+    )
     
-    # --- UPDATED MODEL LIST BASED ON YOUR ERROR LOG ---
+    # --- MODEL FALLBACK ---
     models_to_try = [
         'gemini-2.0-flash', 
         'gemini-2.0-flash-lite',
@@ -209,7 +234,6 @@ def rag_tool(store: RAGStore, question: str) -> str:
             last_error = e
             continue
             
-    # If all models fail, PRINT AVAILABLE MODELS to help debug
     try:
         available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         return f"❌ All models failed. \n\n**Available Models for your API Key:** \n{available_models} \n\n**Last Error:** {last_error}"

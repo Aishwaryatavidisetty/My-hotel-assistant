@@ -194,6 +194,7 @@ def run_chat_assistant(cfg):
             st.info("👋 Hi! Ask me about room prices, amenities, or say 'I want to book a room'.")
             
         for msg in st.session_state.messages:
+            # Reverted to standard visible avatars
             with st.chat_message(msg["role"], avatar=BOT_AVATAR if msg["role"]=="assistant" else USER_AVATAR):
                 st.write(msg["content"])
 
@@ -391,7 +392,8 @@ def handle_faq_intent(user_message: str) -> str:
     if store is None or store.size == 0:
         return "I can't answer that yet. Please upload hotel documents first."
     else:
-        return rag_tool(store, user_message)
+        # --- CHANGED: Pass chat history for context ---
+        return rag_tool(store, user_message, st.session_state.messages)
 
 
 if __name__ == "__main__":
