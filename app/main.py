@@ -166,7 +166,7 @@ def main():
 
 def run_chat_assistant(cfg):
     # Standard Header
-    st.title("🏨 Grand Hotel AI Concierge")
+    st.title("🏨 AI Hotel Booking Assistant")
     st.caption("Your personal assistant for bookings and hotel services.")
 
     # File Uploader in Expander (Cleaner UI)
