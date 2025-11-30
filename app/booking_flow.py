@@ -131,7 +131,6 @@ def llm_extract_booking_fields(message: str, state: BookingState) -> Dict[str, A
 
     prompt = f"{system_prompt}\n\nUser Message: {message}"
 
-    # --- UPDATED MODEL LIST BASED ON YOUR ERROR LOG ---
     models_to_try = [
         'gemini-2.0-flash', 
         'gemini-2.0-flash-lite',
@@ -153,72 +152,78 @@ def llm_extract_booking_fields(message: str, state: BookingState) -> Dict[str, A
             continue
     
     if not content:
-        # Debugging: Print available models if all fail
-        try:
-            available = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            st.error(f"Extraction failed. Available models: {available}")
-        except:
-            st.error(f"Extraction failed. Error: {last_error}")
+        # st.error(f"Extraction failed. Error: {last_error}")
         return {}
 
     try:
         content = content.replace("```json", "").replace("```", "").strip()
         return json.loads(content)
     except Exception as e:
-        st.error(f"JSON Parse Error: {str(e)}")
+        # st.error(f"JSON Parse Error: {str(e)}")
         return {}
 
 
-# ----------------- STATE UPDATE ------------------------
+# ----------------- STATE UPDATE (IMPROVED VALIDATION) ------------------------
 
 def update_state_from_message(message: str, state: BookingState) -> BookingState:
-    
     state.active = True
+    
+    # 1. Check what we were looking for BEFORE extracting
+    missing_before = get_missing_fields(state)
+    target_field = missing_before[0] if missing_before else None
 
+    # 2. Extract
     extracted = llm_extract_booking_fields(message, state)
     state.errors.clear()
 
     # --- Name ---
-    name = extracted.get("customer_name")
-    if name and not state.customer_name:
-        state.customer_name = name.strip()
+    if extracted.get("customer_name"):
+        state.customer_name = extracted["customer_name"].strip()
+    elif target_field == "customer_name":
+        # If we asked for a name but didn't get one
+        state.errors["customer_name"] = "I didn't catch a name. Could you please provide your full name?"
 
     # --- Email ---
-    email = extracted.get("email")
-    if email and not state.email:
-        email = email.strip()
+    if extracted.get("email"):
+        email = extracted["email"].strip()
         if validate_email(email):
             state.email = email
         else:
-            state.errors["email"] = "Invalid email address."
+            state.errors["email"] = "That email looks invalid. Please try format: name@example.com"
+    elif target_field == "email":
+        state.errors["email"] = "Please provide a valid email address."
 
     # --- Phone ---
-    phone = extracted.get("phone")
-    if phone and not state.phone:
-        state.phone = phone.strip()
+    if extracted.get("phone"):
+        state.phone = extracted["phone"].strip()
+    elif target_field == "phone":
+        state.errors["phone"] = "Please enter your phone number."
 
     # --- Booking Type ---
-    booking_type = extracted.get("booking_type")
-    if booking_type and not state.booking_type:
-        state.booking_type = booking_type.strip()
+    if extracted.get("booking_type"):
+        state.booking_type = extracted["booking_type"].strip()
+    elif target_field == "booking_type":
+        state.errors["booking_type"] = "Please specify a room type (e.g., Deluxe, Single, Suite)."
 
     # --- Date ---
-    date_str = extracted.get("date")
-    if date_str and not state.date:
-        parsed = parse_date_str(date_str)
+    if extracted.get("date"):
+        parsed = parse_date_str(extracted["date"])
         if parsed:
             state.date = parsed
         else:
-            state.errors["date"] = "Please use date format YYYY-MM-DD."
+            state.errors["date"] = "Invalid date format. Please use YYYY-MM-DD."
+    elif target_field == "date":
+        state.errors["date"] = "I couldn't understand that date. Please try YYYY-MM-DD (e.g., 2025-12-01)."
 
     # --- Time ---
-    time_str = extracted.get("time")
-    if time_str and not state.time:
-        parsed = parse_time_str(time_str)
+    if extracted.get("time"):
+        parsed = parse_time_str(extracted["time"])
         if parsed:
             state.time = parsed
         else:
-            state.errors["time"] = "Please use time format HH:MM (24h)."
+            state.errors["time"] = "Invalid time format. Please use HH:MM."
+    elif target_field == "time":
+        state.errors["time"] = "I couldn't understand that time. Please use 24-hour format (e.g., 14:00)."
 
     return state
 
@@ -229,7 +234,7 @@ def next_question_for_missing_field(field_name: str) -> str:
     prompts = {
         "customer_name": "May I know the guest name?",
         "email": "What's your email address for confirmation?",
-        "phone": "Your phone number? (optional)",
+        "phone": "Your phone number? ",
         "booking_type": "What type of room would you like to book?",
         "date": "What check-in date? Please use YYYY-MM-DD.",
         "time": "What arrival time? Please use HH:MM (24-hour).",
