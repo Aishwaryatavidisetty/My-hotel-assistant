@@ -218,6 +218,8 @@ def update_state_from_message(message: str, state: BookingState) -> BookingState
                  state.errors["phone"] = "Invalid phone number. Please enter a valid mobile number."
             else:
                 state.phone = val
+    elif target_field == "phone":
+        state.errors["phone"] = "Invalid phone number."
 
     # --- Booking Type ---
     if extracted.get("booking_type"):
