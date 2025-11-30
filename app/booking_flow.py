@@ -87,12 +87,12 @@ def get_missing_fields(state: BookingState) -> List[str]:
 def generate_confirmation_text(state: BookingState) -> str:
     # Use Markdown bullet points to force new lines
     return (
-        f"- **Name:** {state.customer_name}\n"
-        f"- **Email:** {state.email}\n"
-        f"- **Phone:** {state.phone or 'N/A'}\n"
-        f"- **Room Type:** {state.booking_type}\n"
-        f"- **Date:** {state.date}\n"
-        f"- **Time:** {state.time}"
+        f"Name: {state.customer_name}\n"
+        f"Email: {state.email}\n"
+        f"Phone: {state.phone or 'N/A'}\n"
+        f"Room Type: {state.booking_type}\n"
+        f"Date: {state.date}\n"
+        f"Time: {state.time}"
     )
 
 
