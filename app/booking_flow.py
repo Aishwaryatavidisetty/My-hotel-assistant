@@ -85,6 +85,7 @@ def get_missing_fields(state: BookingState) -> List[str]:
 
 
 def generate_confirmation_text(state: BookingState) -> str:
+    # Use Markdown bullet points to force new lines
     return (
         f"- **Name:** {state.customer_name}\n"
         f"- **Email:** {state.email}\n"
@@ -117,6 +118,7 @@ def llm_extract_booking_fields(message: str, state: BookingState) -> Dict[str, A
     expected_field = missing[0] if missing else "none"
     today = date.today().isoformat()
 
+    # --- DYNAMIC CONTEXT ---
     if state.awaiting_confirmation:
         context_str = (
             f"CURRENT CONTEXT: The user is reviewing their booking details. "
@@ -157,7 +159,7 @@ def llm_extract_booking_fields(message: str, state: BookingState) -> Dict[str, A
             model = genai.GenerativeModel(model_name)
             response = model.generate_content(prompt)
             content = response.text
-            break
+            break # Success
         except Exception as e:
             last_error = e
             continue
@@ -172,23 +174,16 @@ def llm_extract_booking_fields(message: str, state: BookingState) -> Dict[str, A
         return {}
 
 
-# ----------------- STATE UPDATE ------------------------
+# ----------------- STATE UPDATE (IMPROVED VALIDATION + RESET LOGIC) ------------------------
 
 def update_state_from_message(message: str, state: BookingState) -> BookingState:
     state.active = True
     
-    # --- SKIP VALIDATION IF JUST GRATITUDE ---
-    # This prevents "Name too short" errors if user just says "Thanks"
-    gratitude_words = ["thank", "thanks", "thx", "appreciate"]
-    cleaned_msg = message.lower().strip()
-    if any(w in cleaned_msg for w in gratitude_words) and len(cleaned_msg) < 15:
-        # Check if it's ONLY gratitude (short message)
-        # We return early, preserving state, main.py will add "You're welcome"
-        return state
-
+    # 1. Check what we were looking for BEFORE extracting
     missing_before = get_missing_fields(state)
     target_field = missing_before[0] if missing_before else None
 
+    # 2. Extract
     extracted = llm_extract_booking_fields(message, state)
     state.errors.clear()
 
@@ -219,7 +214,7 @@ def update_state_from_message(message: str, state: BookingState) -> BookingState
             state.phone = None
         else:
             digits = re.sub(r'\D', '', val)
-            if len(digits) < 10 or len(digits) > 10:
+            if len(digits) < 10 or len(digits) > 15:
                  state.errors["phone"] = "Invalid phone number. Please enter a valid mobile number."
             else:
                 state.phone = val
@@ -246,7 +241,7 @@ def update_state_from_message(message: str, state: BookingState) -> BookingState
                 "Which one would you like to book?"
             )
 
-    # --- Date ---
+    # --- Date Error Handling ---
     if extracted.get("date"):
         val = extracted["date"]
         if val == "RESET":
@@ -261,9 +256,10 @@ def update_state_from_message(message: str, state: BookingState) -> BookingState
             else:
                 state.errors["date"] = "Invalid date format. Please use YYYY-MM-DD."
     elif target_field == "date":
+        # Specific error if we asked for date but got something else
         state.errors["date"] = "Invalid date. Please enter format YYYY-MM-DD."
 
-    # --- Time ---
+    # --- Time Error Handling ---
     if extracted.get("time"):
         val = extracted["time"]
         if val == "RESET":
@@ -275,9 +271,10 @@ def update_state_from_message(message: str, state: BookingState) -> BookingState
             else:
                 state.errors["time"] = "Invalid time format. Please use HH:MM."
     elif target_field == "time":
+        # Specific error if we asked for time but got something else
         state.errors["time"] = "Invalid time. Please use 24-hour format (e.g., 14:00)."
 
-    # --- Reorder Errors ---
+    # --- Reorder Errors (Prioritize Current Question) ---
     if target_field and target_field in state.errors:
         priority_error = {target_field: state.errors[target_field]}
         for k, v in state.errors.items():
@@ -294,7 +291,7 @@ def next_question_for_missing_field(field_name: str) -> str:
     prompts = {
         "customer_name": "May I know the guest name?",
         "email": "What's your email address for confirmation?",
-        "phone": "Your phone number?",
+        "phone": "Your phone number? (optional)",
         "booking_type": "What type of room would you like to book? (Standard, Deluxe, Suite)",
         "date": "What check-in date? Please use YYYY-MM-DD.",
         "time": "What arrival time? Please use HH:MM (24-hour).",
