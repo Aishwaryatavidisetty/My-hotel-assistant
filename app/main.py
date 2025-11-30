@@ -341,9 +341,9 @@ def handle_booking_intent(cfg, user_message: str) -> str:
             st.session_state.booking_state = BookingState()
             return msg
 
-        # 2. ALLOW CORRECTIONS (Fallthrough)
-        # If user says anything other than "confirm" or "cancel",
-        # we assume it's a correction update. We do NOT return here.
+        # 2. ALLOW CORRECTIONS (Explicit Fallthrough)
+        # If the user says something that isn't confirm/cancel, we assume they want to correct details.
+        # We pass the input to 'update_state_from_message' below.
         pass 
 
     # --- PROCESS UPDATES (Normal flow or Correction flow) ---
@@ -362,6 +362,10 @@ def handle_booking_intent(cfg, user_message: str) -> str:
     summary = generate_confirmation_text(state)
     state.awaiting_confirmation = True
     st.session_state.booking_state = state
+
+    # If this was a correction, we acknowledge the updated details
+    if state.awaiting_confirmation and "confirm" not in lower_msg:
+         return f"**Updated details:**\n\n{summary}\n\nType **'confirm'** if this looks correct."
 
     return f"**Please confirm details:**\n\n{summary}\n\nType **'confirm'**."
 
