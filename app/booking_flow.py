@@ -85,7 +85,7 @@ def get_missing_fields(state: BookingState) -> List[str]:
 
 
 def generate_confirmation_text(state: BookingState) -> str:
-    # UPDATED: Use Markdown bullet points to force new lines
+    # Use Markdown bullet points to force new lines
     return (
         f"- **Name:** {state.customer_name}\n"
         f"- **Email:** {state.email}\n"
@@ -167,7 +167,11 @@ def llm_extract_booking_fields(message: str, state: BookingState) -> Dict[str, A
 def update_state_from_message(message: str, state: BookingState) -> BookingState:
     state.active = True
     
-    # Extract
+    # 1. Check what we were looking for BEFORE extracting
+    missing_before = get_missing_fields(state)
+    target_field = missing_before[0] if missing_before else None
+
+    # 2. Extract
     extracted = llm_extract_booking_fields(message, state)
     state.errors.clear()
 
@@ -178,6 +182,7 @@ def update_state_from_message(message: str, state: BookingState) -> BookingState
              state.errors["customer_name"] = "Name looks too short. Please provide your full name."
         else:
             state.customer_name = name
+    # Removed fallback "didn't catch name" to prevent warnings on start
 
     # --- Email ---
     if extracted.get("email"):
@@ -187,22 +192,35 @@ def update_state_from_message(message: str, state: BookingState) -> BookingState
         else:
             state.errors["email"] = "That email looks invalid. Please try format: name@example.com"
 
-    # --- Phone ---
+    # --- Phone (Validation Update) ---
     if extracted.get("phone"):
         phone = extracted["phone"].strip()
-        # Basic check: at least 7 digits for a valid number
-        if len(re.sub(r'\D', '', phone)) < 7:
-             state.errors["phone"] = "That phone number doesn't look right. Please enter a valid number."
+        # Strictly numeric check for length (e.g. 10-15 digits standard for international/local)
+        digits = re.sub(r'\D', '', phone)
+        if len(digits) < 10 or len(digits) > 15:
+             state.errors["phone"] = "Invalid phone number. Please enter a valid 10-digit mobile number."
         else:
             state.phone = phone
 
-    # --- Booking Type ---
+    # --- Booking Type (Room Info Update) ---
     if extracted.get("booking_type"):
         b_type = extracted["booking_type"].strip()
         if len(b_type) < 2:
              state.errors["booking_type"] = "Please specify a valid room type."
         else:
             state.booking_type = b_type
+    elif target_field == "booking_type":
+        # Check if user is asking for options instead of answering
+        msg_lower = message.lower()
+        if any(w in msg_lower for w in ["option", "type", "available", "what", "which"]):
+            # Provide info directly via error message channel so it displays immediately
+            state.errors["booking_type"] = (
+                "We have the following rooms available:\n\n"
+                "- **Standard Room** ($100/night)\n"
+                "- **Deluxe Room** ($180/night)\n"
+                "- **Executive Suite** ($350/night)\n\n"
+                "Which one would you like to book?"
+            )
 
     # --- Date ---
     if extracted.get("date"):
@@ -233,7 +251,7 @@ def next_question_for_missing_field(field_name: str) -> str:
         "customer_name": "May I know the guest name?",
         "email": "What's your email address for confirmation?",
         "phone": "Your phone number? (optional)",
-        "booking_type": "What type of room would you like to book?",
+        "booking_type": "What type of room would you like to book? (Standard, Deluxe, Suite)",
         "date": "What check-in date? Please use YYYY-MM-DD.",
         "time": "What arrival time? Please use HH:MM (24-hour).",
     }

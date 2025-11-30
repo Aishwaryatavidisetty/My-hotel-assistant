@@ -144,14 +144,14 @@ def main():
         page_title="AI Hotel Booking Assistant",
         page_icon="🏨",
         layout="wide",
-        initial_sidebar_state="expanded" # Restored Sidebar
+        initial_sidebar_state="expanded" 
     )
     
     inject_custom_css()
     cfg = load_config()
     _init_app_state()
 
-    # --- SIDEBAR NAVIGATION (Restored) ---
+    # --- SIDEBAR NAVIGATION ---
     with st.sidebar:
         st.title("Navigation")
         menu = st.radio("Go to", ["Chat Assistant", "Admin Dashboard"])
@@ -186,7 +186,6 @@ def run_chat_assistant(cfg):
             st.success(f"Indexed {len(chunks)} chunks.")
 
     # --- CHAT AREA ---
-    # Container to keep messages scrollable
     chat_container = st.container(height=500)
 
     with chat_container:
@@ -194,7 +193,6 @@ def run_chat_assistant(cfg):
             st.info("👋 Hi! Ask me about room prices, amenities, or say 'I want to book a room'.")
             
         for msg in st.session_state.messages:
-            # Reverted to standard visible avatars
             with st.chat_message(msg["role"], avatar=BOT_AVATAR if msg["role"]=="assistant" else USER_AVATAR):
                 st.write(msg["content"])
 
@@ -230,17 +228,30 @@ def run_chat_assistant(cfg):
     
     store_message(st.session_state.messages, "user", user_input)
 
-    # --- INTENT & RESPONSE ---
+    # --- INTENT & ROUTING ---
     detected_intent = detect_intent(user_input)
     final_intent = detected_intent
     
-    rag_keywords = ["price", "cost", "rate", "wifi", "pool", "gym", "check-in", "policy", "refund", "breakfast", "location"]
-    check_booking_keywords = ["check booking", "status", "my booking"]
+    # Expanded Keyword List for Hotel Services
+    rag_keywords = [
+        "price", "cost", "rate", "wifi", "pool", "gym", "spa", "parking",
+        "check-in", "check-out", "policy", "refund", "cancel",
+        "breakfast", "food", "restaurant", "location", "near", 
+        "service", "amenit", "offer", "facility", "facilities", "room", "bed", "type"
+    ]
     
+    check_booking_keywords = ["check booking", "status", "my booking"]
+    start_booking_keywords = ["book", "yes", "sure", "yep", "confirm", "reservation", "need"]
+    
+    # 1. Check Booking Status
     if any(kw in user_input.lower() for kw in check_booking_keywords):
         final_intent = "check_booking"
-    elif any(kw in user_input.lower() for kw in rag_keywords):
+        
+    # 2. Check General Questions (RAG) - Priority over booking for questions
+    elif any(kw in user_input.lower() for kw in rag_keywords) or "?" in user_input:
         final_intent = "faq_rag"
+        
+    # 3. Check Booking Flow
     elif st.session_state.booking_state.active:
         if "cancel" in user_input.lower():
             final_intent = "booking"
@@ -248,6 +259,10 @@ def run_chat_assistant(cfg):
              final_intent = "faq_rag"
         else:
             final_intent = "booking"
+            
+    # 4. Check New Booking Intent
+    elif any(kw in user_input.lower() for kw in start_booking_keywords):
+        final_intent = "booking"
 
     # Generate Answer
     if final_intent == "booking":
@@ -259,7 +274,11 @@ def run_chat_assistant(cfg):
     elif final_intent == "small_talk":
         response_text = "Hello! I can help you with room bookings or hotel information."
     else:
-        response_text = "I'm not sure I understood. Would you like to make a booking?"
+        # Fallback for ambiguous inputs that look like questions
+        if "?" in user_input:
+             response_text = handle_faq_intent(user_input)
+        else:
+             response_text = "I'm not sure I understood. Would you like to make a booking?"
 
     # Display Assistant Response
     store_message(st.session_state.messages, "assistant", response_text)
@@ -267,7 +286,6 @@ def run_chat_assistant(cfg):
         with st.chat_message("assistant", avatar=BOT_AVATAR):
             st.write(response_text)
             
-            # Smart Voice Response (Only if user spoke)
             if input_source == "audio":
                 text_to_speech(response_text)
 
@@ -312,10 +330,8 @@ def handle_booking_intent(cfg, user_message: str) -> str:
                 return f"⚠️ Error: {result['error']}"
 
             booking_id = result["booking_id"]
-            
-            # --- EMAIL CONTENT UPDATE ---
             email_body = (
-                f"Your Booking is confirmed!\n\n"
+                f"Booking is confirmed!\n\n"
                 f"Booking ID: {booking_id}\n\n"
                 f"{generate_confirmation_text(state)}"
             )
@@ -355,7 +371,7 @@ def handle_booking_intent(cfg, user_message: str) -> str:
 def handle_faq_intent(user_message: str) -> str:
     store: RAGStore = st.session_state.rag_store
     if store is None or store.size == 0:
-        return "I can't answer that yet. Please upload hotel documents first."
+        return "I can't answer that yet. Please upload hotel documents in the sidebar first."
     else:
         return rag_tool(store, user_message)
 
