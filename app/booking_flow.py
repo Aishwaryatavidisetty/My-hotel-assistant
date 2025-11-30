@@ -85,14 +85,13 @@ def get_missing_fields(state: BookingState) -> List[str]:
 
 
 def generate_confirmation_text(state: BookingState) -> str:
-    # Use Markdown bullet points to force new lines
     return (
         f"Name: {state.customer_name}\n"
         f"Email: {state.email}\n"
         f"Phone: {state.phone or 'N/A'}\n"
         f"Room Type: {state.booking_type}\n"
         f"Date: {state.date}\n"
-        f"Time: {state.time}"
+        f"Time: {state.time}\n"
     )
 
 
@@ -142,6 +141,8 @@ def llm_extract_booking_fields(message: str, state: BookingState) -> Dict[str, A
         "Do not include ```json ... ``` wrappers, just raw JSON."
     )
 
+
+
     prompt = f"{system_prompt}\n\nUser Message: {message}"
 
     models_to_try = [
@@ -173,6 +174,9 @@ def llm_extract_booking_fields(message: str, state: BookingState) -> Dict[str, A
     except Exception as e:
         return {}
 
+
+
+# ----------------- STATE UPDATE (IMPROVED VALIDATION) ------------------------
 
 # ----------------- STATE UPDATE (IMPROVED VALIDATION + RESET LOGIC) ------------------------
 
@@ -249,7 +253,6 @@ def update_state_from_message(message: str, state: BookingState) -> BookingState
         else:
             parsed = parse_date_str(val)
             if parsed:
-                # Check for past date
                 if parsed < date.today():
                     state.errors["date"] = "That date is in the past. Please choose an upcoming date (YYYY-MM-DD)."
                 else:
@@ -292,7 +295,7 @@ def next_question_for_missing_field(field_name: str) -> str:
         "customer_name": "May I know the guest name?",
         "email": "What's your email address for confirmation?",
         "phone": "Your phone number? ",
-        "booking_type": "What type of room would you like to book? (Standard, Deluxe, Suite)",
+        "booking_type": "What type of room would you like to book?",
         "date": "What check-in date? Please use YYYY-MM-DD.",
         "time": "What arrival time? Please use HH:MM (24-hour).",
     }
