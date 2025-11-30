@@ -87,12 +87,12 @@ def get_missing_fields(state: BookingState) -> List[str]:
 def generate_confirmation_text(state: BookingState) -> str:
     # Use Markdown bullet points to force new lines
     return (
-        f"Name: {state.customer_name}\n"
-        f"Email: {state.email}\n"
-        f"Phone: {state.phone or 'N/A'}\n"
-        f"Room Type: {state.booking_type}\n"
-        f"Date: {state.date}\n"
-        f"Time: {state.time}"
+        f"- **Name:** {state.customer_name}\n"
+        f"- **Email:** {state.email}\n"
+        f"- **Phone:** {state.phone or 'N/A'}\n"
+        f"- **Room Type:** {state.booking_type}\n"
+        f"- **Date:** {state.date}\n"
+        f"- **Time:** {state.time}"
     )
 
 
@@ -214,7 +214,7 @@ def update_state_from_message(message: str, state: BookingState) -> BookingState
             state.phone = None
         else:
             digits = re.sub(r'\D', '', val)
-            if len(digits) < 10 or len(digits) > 10:
+            if len(digits) < 10 or len(digits) > 15:
                  state.errors["phone"] = "Invalid phone number. Please enter a valid mobile number."
             else:
                 state.phone = val
@@ -241,7 +241,7 @@ def update_state_from_message(message: str, state: BookingState) -> BookingState
                 "Which one would you like to book?"
             )
 
-    # --- Date Error Handling ---
+    # --- Date ---
     if extracted.get("date"):
         val = extracted["date"]
         if val == "RESET":
@@ -249,17 +249,18 @@ def update_state_from_message(message: str, state: BookingState) -> BookingState
         else:
             parsed = parse_date_str(val)
             if parsed:
+                # Check for past date
                 if parsed < date.today():
-                    state.errors["date"] = "Invalid date (past). Please choose an upcoming date (YYYY-MM-DD)."
+                    state.errors["date"] = "That date is in the past. Please choose an upcoming date (YYYY-MM-DD)."
                 else:
                     state.date = parsed
             else:
                 state.errors["date"] = "Invalid date format. Please use YYYY-MM-DD."
     elif target_field == "date":
-        # Specific error if we asked for date but got something else
+        # Targeted error: If we asked for date but got nothing valid
         state.errors["date"] = "Invalid date. Please enter format YYYY-MM-DD."
 
-    # --- Time Error Handling ---
+    # --- Time ---
     if extracted.get("time"):
         val = extracted["time"]
         if val == "RESET":
@@ -271,7 +272,6 @@ def update_state_from_message(message: str, state: BookingState) -> BookingState
             else:
                 state.errors["time"] = "Invalid time format. Please use HH:MM."
     elif target_field == "time":
-        # Specific error if we asked for time but got something else
         state.errors["time"] = "Invalid time. Please use 24-hour format (e.g., 14:00)."
 
     # --- Reorder Errors (Prioritize Current Question) ---
@@ -291,7 +291,7 @@ def next_question_for_missing_field(field_name: str) -> str:
     prompts = {
         "customer_name": "May I know the guest name?",
         "email": "What's your email address for confirmation?",
-        "phone": "Your phone number? ",
+        "phone": "Your phone number? (optional)",
         "booking_type": "What type of room would you like to book? (Standard, Deluxe, Suite)",
         "date": "What check-in date? Please use YYYY-MM-DD.",
         "time": "What arrival time? Please use HH:MM (24-hour).",
