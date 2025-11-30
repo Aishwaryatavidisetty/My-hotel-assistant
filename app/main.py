@@ -186,7 +186,6 @@ def run_chat_assistant(cfg):
             st.success(f"Indexed {len(chunks)} chunks.")
 
     # --- CHAT AREA ---
-    # Container to keep messages scrollable
     chat_container = st.container(height=500)
 
     with chat_container:
@@ -194,7 +193,6 @@ def run_chat_assistant(cfg):
             st.info("👋 Hi! Ask me about room prices, amenities, or say 'I want to book a room'.")
             
         for msg in st.session_state.messages:
-            # Reverted to standard visible avatars
             with st.chat_message(msg["role"], avatar=BOT_AVATAR if msg["role"]=="assistant" else USER_AVATAR):
                 st.write(msg["content"])
 
@@ -244,10 +242,15 @@ def run_chat_assistant(cfg):
     check_booking_keywords = ["check booking", "status", "my booking"]
     start_booking_keywords = ["book", "yes", "sure", "yep", "confirm", "reservation", "need"]
     
+    # 1. Check Booking Status
     if any(kw in user_input.lower() for kw in check_booking_keywords):
         final_intent = "check_booking"
+        
+    # 2. Check General Questions (RAG)
     elif any(kw in user_input.lower() for kw in rag_keywords) or "?" in user_input:
         final_intent = "faq_rag"
+        
+    # 3. Check Booking Flow
     elif st.session_state.booking_state.active:
         if "cancel" in user_input.lower():
             final_intent = "booking"
@@ -255,6 +258,8 @@ def run_chat_assistant(cfg):
              final_intent = "faq_rag"
         else:
             final_intent = "booking"
+            
+    # 4. Check New Booking Intent
     elif any(kw in user_input.lower() for kw in start_booking_keywords):
         final_intent = "booking"
 
@@ -270,6 +275,8 @@ def run_chat_assistant(cfg):
     else:
         if "?" in user_input:
              response_text = handle_faq_intent(user_input)
+        elif "thank" in user_input.lower():
+             response_text = "You're welcome! Let me know if you need anything else."
         else:
              response_text = "I'm not sure I understood. Would you like to make a booking?"
 
@@ -313,6 +320,7 @@ def handle_booking_intent(cfg, user_message: str) -> str:
         st.session_state.booking_state = BookingState()
         return "🚫 Booking cancelled."
 
+    # --- CONFIRMATION HANDLING ---
     if state.awaiting_confirmation:
         # 1. CHECK CONFIRMATION
         if "confirm" in lower_msg or lower_msg in ("yes", "yes, confirm"):
@@ -342,8 +350,6 @@ def handle_booking_intent(cfg, user_message: str) -> str:
             return msg
 
         # 2. ALLOW CORRECTIONS (Explicit Fallthrough)
-        # If the user says something that isn't confirm/cancel, we assume they want to correct details.
-        # We pass the input to 'update_state_from_message' below.
         pass 
 
     # --- PROCESS UPDATES (Normal flow or Correction flow) ---
@@ -357,7 +363,13 @@ def handle_booking_intent(cfg, user_message: str) -> str:
     missing = get_missing_fields(state)
 
     if missing:
-        return next_question_for_missing_field(missing[0])
+        # --- NEW: WELCOME LOGIC ---
+        # If user said "Thanks" or "Thank you" while filling details
+        question = next_question_for_missing_field(missing[0])
+        gratitude_words = ["thank", "thanks", "thx", "appreciate"]
+        if any(w in lower_msg for w in gratitude_words):
+            return f"You're welcome! {question}"
+        return question
 
     summary = generate_confirmation_text(state)
     state.awaiting_confirmation = True
