@@ -119,12 +119,12 @@ def llm_extract_booking_fields(message: str, state: BookingState) -> Dict[str, A
     today = date.today().isoformat()
 
     # --- DYNAMIC CONTEXT ---
-    # If we are waiting for confirmation, tell the LLM to listen for CORRECTIONS.
     if state.awaiting_confirmation:
         context_str = (
             f"CURRENT CONTEXT: The user is reviewing their booking details. "
-            f"They might say 'confirm', or they might provide a CORRECTION (e.g., 'Change name to X', 'Wrong date'). "
-            f"If they provide a correction, extract the new value."
+            f"They might say 'confirm', or they might provide a CORRECTION. "
+            f"If they say 'Change name' WITHOUT providing a new name, return 'RESET' for customer_name. "
+            f"Same logic for other fields: return 'RESET' if they want to change it but didn't say what to."
         )
     else:
         context_str = f"CURRENT CONTEXT: The system is asking the user for: '{expected_field}'."
@@ -138,6 +138,7 @@ def llm_extract_booking_fields(message: str, state: BookingState) -> Dict[str, A
         "customer_name, email, phone, booking_type, date, time. "
         "Use date format YYYY-MM-DD and time HH:MM (24-hour). "
         "If a field is missing, set it to null. "
+        "CRITICAL: If the user indicates they want to change/correct a field but does NOT provide the new value, set that field to the string 'RESET'. "
         "Do not include ```json ... ``` wrappers, just raw JSON."
     )
 
@@ -173,7 +174,7 @@ def llm_extract_booking_fields(message: str, state: BookingState) -> Dict[str, A
         return {}
 
 
-# ----------------- STATE UPDATE (PRIORITIZED ERROR HANDLING) ------------------------
+# ----------------- STATE UPDATE (IMPROVED VALIDATION + RESET LOGIC) ------------------------
 
 def update_state_from_message(message: str, state: BookingState) -> BookingState:
     state.active = True
@@ -186,39 +187,47 @@ def update_state_from_message(message: str, state: BookingState) -> BookingState
     extracted = llm_extract_booking_fields(message, state)
     state.errors.clear()
 
-    # --- Name Validation ---
+    # --- Name ---
     if extracted.get("customer_name"):
-        name = extracted["customer_name"].strip()
-        if len(name) < 2:
+        val = extracted["customer_name"].strip()
+        if val == "RESET":
+            state.customer_name = None
+        elif len(val) < 2:
              state.errors["customer_name"] = "Name looks too short. Please provide your full name."
         else:
-            state.customer_name = name
+            state.customer_name = val
 
-    # --- Email Validation ---
+    # --- Email ---
     if extracted.get("email"):
-        email = extracted["email"].strip()
-        if validate_email(email):
-            state.email = email
+        val = extracted["email"].strip()
+        if val == "RESET":
+            state.email = None
+        elif validate_email(val):
+            state.email = val
         else:
-            state.errors["email"] = "Invalid email. Please try format: name@example.com"
+            state.errors["email"] = "That email looks invalid. Please try format: name@example.com"
 
-    # --- Phone Validation ---
+    # --- Phone ---
     if extracted.get("phone"):
-        phone = extracted["phone"].strip()
-        digits = re.sub(r'\D', '', phone)
-        # Check standard length (10-15 digits)
-        if len(digits) < 10 or len(digits) > 15:
-             state.errors["phone"] = "Invalid phone number. Please enter a valid mobile number."
+        val = extracted["phone"].strip()
+        if val == "RESET":
+            state.phone = None
         else:
-            state.phone = phone
+            digits = re.sub(r'\D', '', val)
+            if len(digits) < 10 or len(digits) > 15:
+                 state.errors["phone"] = "Invalid phone number. Please enter a valid mobile number."
+            else:
+                state.phone = val
 
-    # --- Booking Type Validation ---
+    # --- Booking Type ---
     if extracted.get("booking_type"):
-        b_type = extracted["booking_type"].strip()
-        if len(b_type) < 2:
+        val = extracted["booking_type"].strip()
+        if val == "RESET":
+            state.booking_type = None
+        elif len(val) < 2:
              state.errors["booking_type"] = "Invalid room type. Please specify Standard, Deluxe, or Suite."
         else:
-            state.booking_type = b_type
+            state.booking_type = val
     elif target_field == "booking_type":
         msg_lower = message.lower()
         if any(w in msg_lower for w in ["option", "type", "available", "what", "which"]):
@@ -230,31 +239,38 @@ def update_state_from_message(message: str, state: BookingState) -> BookingState
                 "Which one would you like to book?"
             )
 
-    # --- Date Validation ---
+    # --- Date ---
     if extracted.get("date"):
-        parsed = parse_date_str(extracted["date"])
-        if parsed:
-            if parsed < date.today():
-                state.errors["date"] = "Invalid date (past). Please choose an upcoming date (YYYY-MM-DD)."
-            else:
-                state.date = parsed
+        val = extracted["date"]
+        if val == "RESET":
+            state.date = None
         else:
-            state.errors["date"] = "Invalid date format. Please use YYYY-MM-DD."
+            parsed = parse_date_str(val)
+            if parsed:
+                if parsed < date.today():
+                    state.errors["date"] = "Invalid date (past). Please choose an upcoming date (YYYY-MM-DD)."
+                else:
+                    state.date = parsed
+            else:
+                state.errors["date"] = "Invalid date format. Please use YYYY-MM-DD."
     elif target_field == "date":
-        # Only error if we specifically asked for date and got junk
         state.errors["date"] = "Invalid date. Please enter format YYYY-MM-DD."
 
-    # --- Time Validation ---
+    # --- Time ---
     if extracted.get("time"):
-        parsed = parse_time_str(extracted["time"])
-        if parsed:
-            state.time = parsed
+        val = extracted["time"]
+        if val == "RESET":
+            state.time = None
         else:
-            state.errors["time"] = "Invalid time format. Please use HH:MM."
+            parsed = parse_time_str(val)
+            if parsed:
+                state.time = parsed
+            else:
+                state.errors["time"] = "Invalid time format. Please use HH:MM."
     elif target_field == "time":
         state.errors["time"] = "Invalid time. Please use 24-hour format (e.g., 14:00)."
 
-    # --- CRITICAL FIX: REORDER ERRORS ---
+    # --- Reorder Errors ---
     if target_field and target_field in state.errors:
         priority_error = {target_field: state.errors[target_field]}
         for k, v in state.errors.items():
