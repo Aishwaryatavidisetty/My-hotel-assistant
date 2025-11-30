@@ -235,11 +235,11 @@ def run_chat_assistant(cfg):
     final_intent = detected_intent
     
     # Removed generic words like "room" to prevent booking confusion
-    rag_keywords = [
+    rag_keywords = [ "suite room", "deluxe", 
         "price", "cost", "rate", "wifi", "pool", "gym", "spa", "parking",
         "check-in", "check-out", "policy", "refund", 
-        "breakfast", "food", "restaurant", "location", "near", 
-        "service", "amenit", "offer", "facility", "facilities", "type"
+        "breakfast", "food", "restaurant", "location", "near", "dinner","lunch",
+        "service","services" ,"amenit","aminities", "offer", "facility", "facilities", "type"
     ]
     
     check_booking_keywords = ["check booking", "status", "my booking"]
